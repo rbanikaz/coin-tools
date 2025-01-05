@@ -107,6 +107,21 @@ def update_name(wallet_id: int, name: str):
     conn.commit()
     conn.close()
 
+def update_private_key(wallet_id: int, private_key_encrypted: bytes):
+    """
+    Updates the 'private_key_encrypted' for the given wallet ID.
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "UPDATE wallets SET private_key_encrypted=? WHERE id=?",
+        (private_key_encrypted, wallet_id)
+    )
+    conn.commit()
+    conn.close()
+
 def insert_wallet(name: str, public_key: str, private_key_encrypted: bytes):
     """
     Inserts a new wallet record into the `wallets` table.

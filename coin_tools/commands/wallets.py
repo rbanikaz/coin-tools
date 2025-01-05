@@ -11,7 +11,8 @@ from coin_tools.db import (
     update_wallet_access_time,
     update_name,
     upsert_ticker,
-    get_tickers
+    get_tickers,
+    update_private_key
 )
 
 def create_wallet(args: argparse.Namespace):
@@ -110,6 +111,39 @@ def manage_ticker(args: argparse.Namespace):
         upsert_ticker(args.ca, args.coin, args.ticker)
         print(f"Ticker for {args.ca} updated: {args.coin} ({args.ticker})")
 
+def manage_encryption(args: argparse.Namespace):
+    if args.generate_key:
+        from cryptography.fernet import Fernet
+        print("Generating a new encryption key...")
+        print(Fernet.generate_key().decode())
+        print("Please store this key securely.")
+        print("You will need it to decrypt any data encrypted with this key.")
+        print("You must set this key as the COINTOOLS_ENC_KEY environment variable.")
+    elif args.rotate_key:
+        all_wallets = get_all_wallets()
+        num_wallets = len(all_wallets)
+        print(f"There are {num_wallets} wallets stored in this database")
+        print("Rotating the encryption key will re-encrypt all private keys.")
+        print("Current private keys will not be able to be read until the new key is set as COINTOOLS_ENC_KEY.")
+        print("Be sure to back up the database and the current encryption key.")
+        
+        new_key = input("Please enter a new encryption key and press Enter to continue: ")
+        if not new_key:
+            print("No key entered. Exiting.")
+            return
+        
+        print("Rotating the encryption key...")
+        for wallet in all_wallets:
+            decrypted = decrypt_data(wallet['private_key_encrypted'])
+            re_encrypted = encrypt_data(decrypted, override_key=new_key)
+            update_private_key(wallet['id'], re_encrypted)
+        print("Encryption key rotation complete.")
+        print("Please set the new key as the COINTOOLS_ENC_KEY environment variable.")
+    else:
+        print("Unknown sub-command for encryption")
+        if hasattr(args, 'parser'):
+            args.parser.print_help()
+
 def wallets_command(args: argparse.Namespace):
     if args.wallet_cmd == "create":
         create_wallet(args)
@@ -123,6 +157,8 @@ def wallets_command(args: argparse.Namespace):
         rename_wallet(args)
     elif args.wallet_cmd == "ticker":
         manage_ticker(args)
+    elif args.wallet_cmd == "encryption":
+        manage_encryption(args)
     else:
         print("Unknown sub-command for wallets")
         if hasattr(args, 'parser'):
@@ -167,3 +203,8 @@ def register(subparsers):
     ticker_parser.add_argument("--ca", required=False, help="Token contract/mint address (CA).")
     ticker_parser.add_argument("--coin", required=False, help="Coin name.")
     ticker_parser.add_argument("--ticker", required=False, help="Coin ticker symbol.")
+
+    # encryption
+    encryption_parser = wallet_subparsers.add_parser("encryption", help="Manage encryption settings.")
+    encryption_parser.add_argument("--generate-key", required=False, action="store_true", help="Generate a new encryption key.")
+    encryption_parser.add_argument("--rotate-key", required=False, action="store_true", help="Rotate the encryption key.")

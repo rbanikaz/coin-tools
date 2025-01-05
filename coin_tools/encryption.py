@@ -11,11 +11,11 @@ def get_encryption_key() -> bytes:
         raise EnvironmentError("Environment variable COINTOOLS_ENC_KEY is required but not set.")
     return key.encode('utf-8')
 
-def encrypt_data(data: bytes) -> bytes:
+def encrypt_data(data: bytes, override_key = None) -> bytes:
     """
     Encrypts bytes using Fernet symmetric encryption.
     """
-    key = get_encryption_key()
+    key = get_encryption_key() if not override_key else override_key
     f = Fernet(key)
     return f.encrypt(data)
 
