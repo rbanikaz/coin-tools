@@ -2,4 +2,4 @@
 export COINTOOLS_HOME=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 export PYTHONPATH="$COINTOOLS_HOME:$PYTHONPATH"
 
-python -m coin_tools.main $@
+python -m coin_tools.main "$@"

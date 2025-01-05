@@ -8,22 +8,21 @@ from coin_tools.db import (
     insert_wallet,
     get_wallet_by_id,
     get_all_wallets,
-    update_wallet_access_time
+    update_wallet_access_time,
+    update_name,
+    upsert_ticker,
+    get_tickers
 )
 
 def create_wallet(args: argparse.Namespace):
-    if not args.name:  
-        print("Error: must specify --name for the wallet.")
-        return
-    
     name = args.name
     keypair = Keypair()
     public_key_str = str(keypair.pubkey())
     secret_bytes = keypair.secret()
     encrypted_key = encrypt_data(secret_bytes)
-    insert_wallet(name, public_key_str, encrypted_key)
+    id = insert_wallet(name, public_key_str, encrypted_key)
 
-    print("Wallet created!")
+    print(f"Wallet ID {id} created!")
     print(f"Public Key: {public_key_str}")
 
 
@@ -39,9 +38,6 @@ def list_wallets(args: argparse.Namespace):
 
 
 def get_wallet(args: argparse.Namespace):
-    if not args.id:
-        print("Error: must specify --id <wallet_id> for get.")
-        return
 
     wallet = get_wallet_by_id(args.id)
     if not wallet:
@@ -70,14 +66,7 @@ def import_wallet(args: argparse.Namespace):
     Imports a wallet from just a base58-encoded private key.
     We derive the public key automatically from the private key.
     """
-    if not args.private_key:
-        print("Error: must specify --private-key in base58 format.")
-        return
-
-    if not args.name:  
-        print("Error: must specify --name for the wallet.")
-        return
-
+    
     name = args.name
     kp = None
     # 1) Decode base58 -> raw bytes
@@ -101,6 +90,25 @@ def import_wallet(args: argparse.Namespace):
     print("Wallet imported successfully.")
     print(f"Public Key: {public_key_str}")
 
+def rename_wallet(args: argparse.Namespace):
+    update_name(args.id, args.name)
+    print(f"Wallet ID {args.id} renamed to '{args.name}'.")
+
+def manage_ticker(args: argparse.Namespace):
+    if args.list:
+        tickers = get_tickers()
+        if not tickers:
+            print("No tickers found.")
+            return
+        for ca, (coin, ticker) in tickers.items():
+            print(f"{ca}: {coin} ({ticker})")
+        return
+    elif args.update:
+        if not args.ca or not args.coin or not args.ticker:
+            print("Missing required arguments: --ca, --coin, --ticker")
+            return
+        upsert_ticker(args.ca, args.coin, args.ticker)
+        print(f"Ticker for {args.ca} updated: {args.coin} ({args.ticker})")
 
 def wallets_command(args: argparse.Namespace):
     if args.wallet_cmd == "create":
@@ -111,6 +119,10 @@ def wallets_command(args: argparse.Namespace):
         get_wallet(args)
     elif args.wallet_cmd == "import":
         import_wallet(args)
+    elif args.wallet_cmd == "rename":
+        rename_wallet(args)
+    elif args.wallet_cmd == "ticker":
+        manage_ticker(args)
     else:
         print("Unknown sub-command for wallets")
         if hasattr(args, 'parser'):
@@ -142,3 +154,16 @@ def register(subparsers):
     import_parser = wallet_subparsers.add_parser("import", help="Import an existing wallet from private key only.")
     import_parser.add_argument("--name", required=True, help="Name of the wallet")
     import_parser.add_argument("--private-key", required=True, help="Base58-encoded private key.")
+
+    # rename
+    rename_parser = wallet_subparsers.add_parser("rename", help="Rename a wallet.")
+    rename_parser.add_argument("--id", type=int, required=True, help="Wallet ID")
+    rename_parser.add_argument("--name", required=True, help="New name for the wallet")
+
+    # ticker
+    ticker_parser = wallet_subparsers.add_parser("ticker", help="Manage tickers for known tokens.")
+    ticker_parser.add_argument("--list", required=False, action="store_true", help="List all known tickers.")
+    ticker_parser.add_argument("--update", required=False, action="store_true", help="Update (or add if not exists) to known tickers.")
+    ticker_parser.add_argument("--ca", required=False, help="Token contract/mint address (CA).")
+    ticker_parser.add_argument("--coin", required=False, help="Coin name.")
+    ticker_parser.add_argument("--ticker", required=False, help="Coin ticker symbol.")

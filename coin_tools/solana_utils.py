@@ -1,14 +1,27 @@
 
 from solders.pubkey import Pubkey as PublicKey
 from solders.keypair import Keypair
-
+from solders.transaction import Transaction
+from solders.pubkey import Pubkey as PublicKey
+from solders.keypair import Keypair
+from solders.system_program import TransferParams, transfer
+from solders.message import Message
 from solana.rpc.api import Client
+from solana.rpc.types import TxOpts
+
 from solana.rpc.types import TokenAccountOpts
 from spl.token.constants import TOKEN_PROGRAM_ID
 from spl.token._layouts import ACCOUNT_LAYOUT, MINT_LAYOUT
-from spl.token.instructions import get_associated_token_address
+from spl.token.instructions import (
+    TransferParams as SplTransferParams,
+    get_associated_token_address,
+    create_idempotent_associated_token_account,
+)
+from spl.token.constants import TOKEN_PROGRAM_ID
 
 from decimal import Decimal
+
+from coin_tools.db import get_tickers
 
 APPROX_RENT = 0.002
 
@@ -23,17 +36,10 @@ def parse_private_key_bytes(secret_bytes:bytes) -> Keypair:
     else:
         raise Exception(f"Private key must be 32 or 64 bytes, but got length {len(secret_bytes)}.")
 
-
-KNOWN_TOKENS = {
-    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": ("USD Coin", "USDC"),
-    "CQJjvLKLuHcJNsvJh7jJ6bK2RS8MH68cGTpf6DJjpump": ("Weedcoin", "CHRONIC"),
-    "7bVE6BZ2y2rEAvxP4dZmrmA1gT6BPHz3imsR5U8upump": ("Kekcoin", "KEK"),
-    "J5CpjMaYHYdZu2WBUPT79mALDJM14FKCiVVPwUDcpump": ("FAPCOIN", "FAPCOIN"),
-    "4cRLrAdyr9wgSFoEyCHr6UTZxtgMtvmFumfqLszDpump": ("Buttplug", "BPC"),
-    "6ZjmgrShWc8kMrWMy3tdgTrjx3v3qivWHjecuKH2pump": ("Saint Nikolass", "NIKO"),
-    "FyKnmtStdToJaHubELurksJ1K47nmFjzDrpLThMeXHwR" : ("BABY PURPLE PEPE", "BABYPURPE"),
-    "7EUGc2cr8yw3RH5CHSubjU3RQvR5nAA3UDeksrc3n3wf" : ("Farmer Shitoshi", "ShitFarmer"),
-}
+known_tokens = get_tickers()
+def get_token_details(mint_pubkey: PublicKey) -> tuple:
+    mint_str = str(mint_pubkey)
+    return known_tokens.get(mint_str, ("Unknown", "???"))
 
 def fetch_sol_balance(client: Client, pubkey: PublicKey) -> Decimal:
     resp = client.get_balance(pubkey)
@@ -89,9 +95,7 @@ def get_token_accounts(client: Client, wallet_pubkey: PublicKey):
         real_balance = Decimal(amount) / (Decimal(10) ** decimals)
 
         # 4) Optional: name/ticker
-        token_name, token_ticker = KNOWN_TOKENS.get(
-            str(mint_pubkey), ("Unknown", "???")
-        )
+        token_name, token_ticker = get_token_details(mint_pubkey)
 
         results.append({
             "mint_pubkey": mint_pubkey,
@@ -103,3 +107,42 @@ def get_token_accounts(client: Client, wallet_pubkey: PublicKey):
         })
     
     return results
+
+def get_or_create_token_account(client: Client, payer_pubkey: PublicKey, owner_pubkey: PublicKey, mint_pubkey: PublicKey, signer_keypair: Keypair) -> PublicKey:
+    ata = get_associated_token_address(owner=owner_pubkey, mint=mint_pubkey)
+     
+    response = client.get_account_info(ata)
+        
+    if not response.value:
+        sol_balance = fetch_sol_balance(client, payer_pubkey)
+   
+        if sol_balance < APPROX_RENT:
+            raise Exception(f"Recipient Account does not exist and payer does not have enough SOL to create it.")
+        
+        print(f"Token Account {ata} does not exist. Creating...")
+        create_ata_ix = create_idempotent_associated_token_account(
+            payer=payer_pubkey,
+            owner=owner_pubkey,
+            mint=mint_pubkey
+        )
+
+        blockhash_resp = client.get_latest_blockhash()
+        recent_blockhash = blockhash_resp.value.blockhash
+
+        message = Message.new_with_blockhash(
+            instructions=[create_ata_ix],
+            blockhash=recent_blockhash,
+            payer=payer_pubkey,
+        )
+
+        transaction = Transaction.new_unsigned(message)
+        transaction.sign([signer_keypair], recent_blockhash=recent_blockhash)
+
+        response = client.send_transaction(transaction, opts=TxOpts(skip_confirmation=False))
+        if response.value:
+            print(f"Transaction confirmed. Signature: {response.value}")
+        else:
+            raise Exception(f"Failed to send transaction: {response}")
+    
+
+    return ata

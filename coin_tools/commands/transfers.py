@@ -24,8 +24,8 @@ from spl.token.instructions import (
 from spl.token.constants import TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
 
 from coin_tools.solana_utils import APPROX_RENT
-from coin_tools.solana_utils import parse_private_key_bytes, get_mint_decimals, get_token_accounts, fetch_sol_balance
-from coin_tools.db import get_wallet_by_id
+from coin_tools.solana_utils import parse_private_key_bytes, get_mint_decimals, get_token_accounts, fetch_sol_balance, get_or_create_token_account
+from coin_tools.db import get_wallet_by_id, update_wallet_access_time
 from coin_tools.encryption import decrypt_data
 
 
@@ -64,9 +64,7 @@ def transfer_sol(args: argparse.Namespace):
         traceback.print_exc()
         return
 
-    # send the transaction
     try:
-      # Create the transfer instruction
       transfer_ix = transfer(
           TransferParams(
               from_pubkey=from_pubkey,
@@ -75,27 +73,25 @@ def transfer_sol(args: argparse.Namespace):
           )
       )
 
-      # Get recent blockhash
       recent_blockhash = client.get_latest_blockhash().value.blockhash
 
-      # Create transaction message
       message = Message.new_with_blockhash(
           instructions=[transfer_ix],
           blockhash=recent_blockhash,
           payer=from_pubkey
       )
 
-      # Create and sign the transaction
       transaction = Transaction.new_unsigned(message)
       transaction.sign([from_keypair], recent_blockhash=recent_blockhash)
 
-      # Send the transaction
-      response = client.send_transaction(transaction)
+      txn_opts = TxOpts(skip_confirmation=False) if args.confirm else TxOpts(skip_confirmation=True)
+      response = client.send_transaction(transaction, opts=txn_opts)
       
-      # Check response
       if response.value:
-          print(f"Successfully transferred {args.amount} SOL from {from_wallet['public_key']} to {to_wallet['public_key']}.")
-          print(f"Transaction sent successfully. Signature: {response.value}")
+          print(f"Transaction Sent: {args.amount} SOL from {from_wallet['public_key']} to {to_wallet['public_key']}.")
+          print(f"Signature: {response.value}")
+          update_wallet_access_time(args.from_id)
+          update_wallet_access_time(args.to_id)
       else:
           print(f"Failed to send transaction: {response}")
     except Exception as e:
@@ -125,7 +121,7 @@ def transfer_token(args: argparse.Namespace):
         from_pubkey = PublicKey.from_string(from_wallet["public_key"])
         to_pubkey = PublicKey.from_string(to_wallet["public_key"])
         token_mint_pubkey = PublicKey.from_string(args.ca)
-        amount = int(Decimal(args.amount) * (10 ** get_mint_decimals(client, token_mint_pubkey)))  # Adjust for token decimals
+        amount = int(Decimal(args.amount) * (10 ** get_mint_decimals(client, token_mint_pubkey))) 
     except ValueError as e:
         print(f"Error parsing public keys or amount: {e}")
         return
@@ -138,35 +134,16 @@ def transfer_token(args: argparse.Namespace):
         print(f"Error decrypting private key: {e}")
         traceback.print_exc()
         return
-
-    # Get associated token accounts
-    from_ata = get_associated_token_address(owner=from_pubkey, mint=token_mint_pubkey)
-    to_ata = get_associated_token_address(owner=to_pubkey, mint=token_mint_pubkey)
-    print(f"Sending From: WalletID: {args.from_id}, PublicKey: {from_wallet['public_key']} ATA: {from_ata}")
-    print(f"Sending To: WalletID: {args.to_id}, PublicKey: {to_wallet['public_key']} ATA: {to_ata}")
-
-    sol_balance = fetch_sol_balance(client, from_pubkey)
-    instructions = []
-
     try:
-        response = client.get_account_info(to_ata)
-        
-        if not response.value:
-            if sol_balance < APPROX_RENT:
-                print(f"Recipient Account does not exist and sender does not have enough SOL to create it.")
-                return
-            
-            print(f"Creating associated token account for recipient: WalletID: {args.to_id}, PublicKey: {to_wallet['public_key']} ATA: {to_ata}")
-            create_ata_ix = create_associated_token_account(
-                payer=from_pubkey,
-                owner=to_pubkey,
-                mint=token_mint_pubkey
-            )
-            instructions.append(create_ata_ix)
+      # Get associated token accounts
+      from_ata = get_associated_token_address(owner=from_pubkey, mint=token_mint_pubkey)
+      to_ata = get_or_create_token_account(client, from_pubkey, to_pubkey, token_mint_pubkey, from_keypair)
+      print(f"Sending From: WalletID: {args.from_id}, PublicKey: {from_wallet['public_key']} ATA: {from_ata}")
+      print(f"Sending To: WalletID: {args.to_id}, PublicKey: {to_wallet['public_key']} ATA: {to_ata}")
     except Exception as e:
-        print(f"Error checking/creating recipient ATA: {e}")
+        print(f"Error getting or creating token accounts: {e}")
         traceback.print_exc()
-        return
+        return    
 
     try:
         # Create the transfer instruction
@@ -179,14 +156,13 @@ def transfer_token(args: argparse.Namespace):
                 program_id=TOKEN_PROGRAM_ID
             )
         )
-        instructions.append(transfer_ix)
 
         # Get recent blockhash
         recent_blockhash = client.get_latest_blockhash().value.blockhash
 
         # Create transaction message
         message = Message.new_with_blockhash(
-            instructions=instructions,
+            instructions=[transfer_ix],
             blockhash=recent_blockhash,
             payer=from_pubkey
         )
@@ -196,12 +172,15 @@ def transfer_token(args: argparse.Namespace):
         transaction.sign([from_keypair], recent_blockhash=recent_blockhash)
 
         # Send the transaction
-        response = client.send_transaction(transaction)
+        txn_opts = TxOpts(skip_confirmation=False) if args.confirm else TxOpts(skip_confirmation=True)
+        response = client.send_transaction(transaction, opts=txn_opts)
         
         # Check response
         if response.value:
-            print(f"Successfully transferred {args.amount} tokens from {from_wallet['public_key']} to {to_wallet['public_key']}.")
+            print(f"Transaction Sent: {args.amount} ({args.ca}) tokens from {from_wallet['public_key']} to {to_wallet['public_key']}.")
             print(f"Transaction Signature: {response.value}")
+            update_wallet_access_time(args.from_id)
+            update_wallet_access_time(args.to_id)
         else:
             print(f"Failed to send transaction: {response}")
     except Exception as e:
@@ -210,10 +189,6 @@ def transfer_token(args: argparse.Namespace):
 
 
 def migrate(args: argparse.Namespace):
-    if not args.from_id or not args.to_id:
-        print("Error: must specify --from-id and --to-id.")
-        return
-
     from_wallet = get_wallet_by_id(args.from_id)
     to_wallet = get_wallet_by_id(args.to_id)
 
@@ -239,6 +214,7 @@ def migrate(args: argparse.Namespace):
               if real_balance > 0:
                   args.ca = str(token_ca)
                   args.amount = str(real_balance)
+                  args.confirm = False
                   transfer_token(args)
           except Exception as e:
               print(f"Error transferring token {entry['token_name']}: {e}")
@@ -248,8 +224,9 @@ def migrate(args: argparse.Namespace):
     if args.sol:
       try:
           sol_balance = fetch_sol_balance(client, from_pubkey)
-          amount_to_transfer = Decimal(sol_balance) - Decimal(0.002)  # Leave a little for fees
+          amount_to_transfer = Decimal(sol_balance) - Decimal(0.001)  # Leave a little for fees
           args.amount = str(amount_to_transfer)
+          args.confirm = False
           transfer_sol(args)
       except Exception as e:
           print(f"Error transferring SOL during migration: {e}")
@@ -291,6 +268,7 @@ def register(subparsers):
     transfer_sol_parser.add_argument("--from-id", type=int, required=True, help="Source wallet ID.")
     transfer_sol_parser.add_argument("--to-id", type=int, required=True, help="Destination wallet ID.")
     transfer_sol_parser.add_argument("--amount", required=True, help="Amount of SOL to transfer.")
+    transfer_sol_parser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
 
     # transfer-token
     transfer_token_parser = transfers_subparsers.add_parser(
@@ -301,6 +279,8 @@ def register(subparsers):
     transfer_token_parser.add_argument("--to-id", type=int, required=True, help="Destination wallet ID.")
     transfer_token_parser.add_argument("--amount", required=True, help="Amount of token to transfer.")
     transfer_token_parser.add_argument("--ca", required=True, help="Token contract/mint address (CA).")
+    transfer_token_parser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
+
 
     # migrate
     migrate_parser = transfers_subparsers.add_parser(
