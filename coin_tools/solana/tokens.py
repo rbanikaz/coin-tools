@@ -23,6 +23,7 @@ from base64 import b64decode
 import json
 from coin_tools.db import get_token_metadata, upsert_token_metadata
 from coin_tools.solana.metaplex_parse import parse_metaplex
+from coin_tools.solana.utils import APPROX_RENT, fetch_sol_balance
 
 TOKEN_METADATA_PROGRAM_ID = PublicKey.from_string("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
 UNKNOWN_TOKEN = {"name": "Unknown", "symbol": "???", "uri": ""} 
@@ -31,7 +32,7 @@ known_tokens = get_token_metadata()
 
 def fetch_token_metadata(client: Client, mint_pubkey: PublicKey) -> dict:
     """
-    Returns Token metadata such as name and ticker for a given CA using the program derived address and metaplex standard layout.
+    Fetches Token metadata such as name and ticker for a given CA using the program derived address and metaplex standard layout.
     """
     mint_str = str(mint_pubkey)
     
@@ -59,9 +60,9 @@ def fetch_token_metadata(client: Client, mint_pubkey: PublicKey) -> dict:
     upsert_token_metadata(mint_str, metadata["name"], metadata["symbol"], metadata["uri"], decimals)
     return metadata
 
+
 def fetch_mint_decimals(client: Client, mint_pubkey: PublicKey) -> int:
-    mint_str = str(mint_pubkey)
-    
+    """Fetch the number of decimals for a given mint from blockchain."""
     resp = client.get_account_info(mint_pubkey)
     if resp.value is None:
         # Possibly not a valid mint or no data
@@ -70,3 +71,94 @@ def fetch_mint_decimals(client: Client, mint_pubkey: PublicKey) -> int:
     data_b64 = resp.value.data
     decoded_mint = MINT_LAYOUT.parse(data_b64)
     return decoded_mint.decimals
+
+
+def fetch_token_accounts(client: Client, wallet_pubkey: PublicKey):
+    """
+    Fetches all token accounts for a given wallet pubkey from the blockchain.
+    """
+    token_opts = TokenAccountOpts(
+        program_id=TOKEN_PROGRAM_ID,
+        encoding="base64",
+    )
+    resp = client.get_token_accounts_by_owner(
+        owner=wallet_pubkey,
+        opts=token_opts
+    )
+
+    results = []
+
+    token_accounts = resp.value
+    if not token_accounts:
+        return results
+
+    for entry in token_accounts:
+        # 1) Decode the token account data
+        data_b64 = entry.account.data
+
+        acct = ACCOUNT_LAYOUT.parse(data_b64)
+        mint_pubkey = PublicKey(acct.mint)
+        amount = acct.amount
+
+        # 2) Fetch the metadata from the mint account
+        metadata = fetch_token_metadata(client, mint_pubkey)
+        token_name = metadata["name"]
+        token_ticker = metadata["symbol"]
+        decimals = metadata["decimals"]
+        # 3) Convert raw amount to real balance
+        real_balance = Decimal(amount) / (Decimal(10) ** decimals)
+
+        # 4) Append metadata
+        results.append({
+            "mint_pubkey": mint_pubkey,
+            "amount": amount,
+            "decimals": decimals,
+            "real_balance": real_balance,
+            "token_name": token_name,
+            "token_ticker": token_ticker,
+        })
+
+    return results
+
+
+def fetch_or_create_token_account(client: Client, payer_pubkey: PublicKey, owner_pubkey: PublicKey, mint_pubkey: PublicKey, signer_keypair: Keypair) -> PublicKey:
+    """
+    Fetches associated token account from the blockchain or creates it if it does not exist.
+    """
+    ata = get_associated_token_address(owner=owner_pubkey, mint=mint_pubkey)
+
+    response = client.get_account_info(ata)
+
+    if not response.value:
+        sol_balance = fetch_sol_balance(client, payer_pubkey)
+
+        if sol_balance < APPROX_RENT:
+            raise Exception(f"Recipient Account does not exist and payer does not have enough SOL to create it.")
+
+        print(f"Token Account {ata} does not exist. Creating...")
+        create_ata_ix = create_idempotent_associated_token_account(
+            payer=payer_pubkey,
+            owner=owner_pubkey,
+            mint=mint_pubkey
+        )
+
+        blockhash_resp = client.get_latest_blockhash()
+        recent_blockhash = blockhash_resp.value.blockhash
+
+        message = Message.new_with_blockhash(
+            instructions=[create_ata_ix],
+            blockhash=recent_blockhash,
+            payer=payer_pubkey,
+        )
+
+        transaction = Transaction.new_unsigned(message)
+        transaction.sign([signer_keypair], recent_blockhash=recent_blockhash)
+
+        response = client.send_transaction(transaction, opts=TxOpts(skip_confirmation=False))
+        if response.value:
+            print(f"Transaction confirmed. Signature: {response.value}")
+        else:
+            raise Exception(f"Failed to send transaction: {response}")
+
+
+    return ata

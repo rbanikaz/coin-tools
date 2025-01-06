@@ -24,8 +24,8 @@ from spl.token.instructions import (
 from spl.token.constants import TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
 
 from coin_tools.solana.utils import APPROX_RENT, get_solana_client
-from coin_tools.solana.utils import parse_private_key_bytes, fetch_token_accounts, fetch_sol_balance, get_or_create_token_account
-from coin_tools.solana.tokens import fetch_token_metadata
+from coin_tools.solana.utils import parse_private_key_bytes, fetch_sol_balance
+from coin_tools.solana.tokens import fetch_or_create_token_account, fetch_token_accounts, fetch_token_metadata
 from coin_tools.db import get_wallet_by_id, update_wallet_access_time
 from coin_tools.encryption import decrypt_data
 
@@ -131,7 +131,7 @@ def transfer_token(args: argparse.Namespace):
     try:
       # Get associated token accounts
       from_ata = get_associated_token_address(owner=from_pubkey, mint=token_mint_pubkey)
-      to_ata = get_or_create_token_account(client, from_pubkey, to_pubkey, token_mint_pubkey, from_keypair)
+      to_ata = fetch_or_create_token_account(client, from_pubkey, to_pubkey, token_mint_pubkey, from_keypair)
       print(f"Sending From: WalletID: {args.from_id}, PublicKey: {from_wallet['public_key']} ATA: {from_ata}")
       print(f"Sending To: WalletID: {args.to_id}, PublicKey: {to_wallet['public_key']} ATA: {to_ata}")
     except Exception as e:

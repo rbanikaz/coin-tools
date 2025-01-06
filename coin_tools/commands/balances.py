@@ -16,8 +16,8 @@ from coin_tools.db import (
     get_all_wallets,
 )
 
-from coin_tools.solana.utils import get_solana_client, fetch_token_accounts, fetch_sol_balance, fetch_token_balance
-from coin_tools.solana.tokens import fetch_token_metadata
+from coin_tools.solana.utils import get_solana_client, fetch_sol_balance, fetch_token_balance
+from coin_tools.solana.tokens import fetch_token_accounts, fetch_token_metadata
 
 
 def get_sol_balance(args: argparse.Namespace):
@@ -66,6 +66,10 @@ def get_token_balance(args):
             print(f"   Balance: {entry['real_balance']}\n")
     else:
         token_balance = fetch_token_balance(client, wallet_pubkey, token_mint_pubkey)
+        if token_balance is None:
+            print(f"No token account found for {args.ca}")
+            return
+        
         metadata = fetch_token_metadata(client, token_mint_pubkey)
         token_name = metadata["name"]
         token_ticker = metadata["symbol"]
