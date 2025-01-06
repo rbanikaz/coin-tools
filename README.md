@@ -157,6 +157,6 @@ Please set the new key as the COINTOOLS_ENC_KEY environment variable.
 
 TODO (not priority order):
 1. Wallet deletion (close solana account, reclaim SOL, etc)
-2. Ticker from Metaplex
+2. Add balance checking to transfer
 3. Pump Fun buy/sell
 4. Volume bot
