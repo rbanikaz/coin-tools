@@ -31,12 +31,13 @@ def init_db():
             last_accessed_timestamp TEXT NOT NULL
         )
     ''')
-
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tickers (
+        CREATE TABLE IF NOT EXISTS token_metadata (
             ca TEXT PRIMARY KEY,
-            coin TEXT NOT NULL,
-            ticker TEXT NOT NULL
+            name TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            uri TEXT,
+            decimals INTEGER
         )
     ''')
 
@@ -146,39 +147,38 @@ def insert_wallet(name: str, public_key: str, private_key_encrypted: bytes):
 
     return wallet_id
 
-def get_tickers():
+def get_token_metadata():
     """
-    Returns a list of all tickers in DB as a dictionary
-    ca -> (coin, ticker).
+    Returns a list of all tokens in DB as a dictionary
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM tickers")
+    cursor.execute("SELECT * FROM token_metadata")
     rows = cursor.fetchall()
     conn.close()
 
     # Convert to dict
-    tickers = {}
+    tokens = {}
     for row in rows:
-        tickers[row['ca']] = (row['coin'], row['ticker'])
-    return tickers
+        tokens[row['ca']] = dict(row)
+    return tokens
 
-def upsert_ticker(ca: str, coin: str, ticker: str):
+def upsert_token_metadata(ca: str, coin: str, ticker: str, uri: str, decimals: int):
     """
-    Inserts or updates a ticker record in the `tickers` table.
+    Inserts or updates a token_metadata record in the `token_metadata` table.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.execute('''
-        INSERT INTO tickers (ca, coin, ticker)
-        VALUES (?, ?, ?)
-        ON CONFLICT(ca) DO UPDATE SET coin=excluded.coin, ticker=excluded.ticker        
-    ''', (ca, coin, ticker))
+        INSERT INTO token_metadata (ca, name, symbol, uri, decimals)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(ca) DO UPDATE SET name=excluded.name, symbol=excluded.symbol, uri=excluded.uri, decimals=excluded.decimals     
+    ''', (ca, coin, ticker, uri, decimals))
     conn.commit()
     conn.close()
     

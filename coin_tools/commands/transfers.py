@@ -23,8 +23,9 @@ from spl.token.instructions import (
 )
 from spl.token.constants import TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
 
-from coin_tools.solana_utils import APPROX_RENT
-from coin_tools.solana_utils import parse_private_key_bytes, get_mint_decimals, get_token_accounts, fetch_sol_balance, get_or_create_token_account
+from coin_tools.solana.utils import APPROX_RENT, get_solana_client
+from coin_tools.solana.utils import parse_private_key_bytes, fetch_token_accounts, fetch_sol_balance, get_or_create_token_account
+from coin_tools.solana.tokens import fetch_token_metadata
 from coin_tools.db import get_wallet_by_id, update_wallet_access_time
 from coin_tools.encryption import decrypt_data
 
@@ -41,11 +42,7 @@ def transfer_sol(args: argparse.Namespace):
         print(f"Error: Wallet(s) not found.")
         return
 
-    rpc_url = os.getenv("COINTOOLS_RPC_URL")
-    if not rpc_url:
-        raise EnvironmentError("COINTOOLS_RPC_URL environment variable is not set.")
-
-    client = Client(rpc_url)
+    client = get_solana_client()
 
     try:
         from_pubkey = PublicKey.from_string(from_wallet["public_key"])
@@ -111,17 +108,14 @@ def transfer_token(args: argparse.Namespace):
         print(f"Error: Wallet(s) not found.")
         return
 
-    rpc_url = os.getenv("COINTOOLS_RPC_URL")
-    if not rpc_url:
-        raise EnvironmentError("COINTOOLS_RPC_URL environment variable is not set.")
-
-    client = Client(rpc_url)
-
+    client = get_solana_client()
+    
     try:
         from_pubkey = PublicKey.from_string(from_wallet["public_key"])
         to_pubkey = PublicKey.from_string(to_wallet["public_key"])
         token_mint_pubkey = PublicKey.from_string(args.ca)
-        amount = int(Decimal(args.amount) * (10 ** get_mint_decimals(client, token_mint_pubkey))) 
+        metadata = fetch_token_metadata(client, token_mint_pubkey)
+        amount = int(Decimal(args.amount) * (10 ** metadata["decimals"])) 
     except ValueError as e:
         print(f"Error parsing public keys or amount: {e}")
         return
@@ -196,17 +190,13 @@ def migrate(args: argparse.Namespace):
         print(f"Error: Wallet(s) not found.")
         return
 
-    rpc_url = os.getenv("COINTOOLS_RPC_URL")
-    if not rpc_url:
-        raise EnvironmentError("COINTOOLS_RPC_URL environment variable is not set.")
-
-    client = Client(rpc_url)
+    client = get_solana_client()
     from_pubkey = PublicKey.from_string(from_wallet["public_key"])
     to_pubkey = PublicKey.from_string(to_wallet["public_key"])
 
     if args.tokens:
       # Transfer all tokens
-      token_accounts = get_token_accounts(client, from_pubkey)
+      token_accounts = fetch_token_accounts(client, from_pubkey)
       for entry in token_accounts:
           try:
               token_ca = entry["mint_pubkey"]

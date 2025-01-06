@@ -1,4 +1,5 @@
 
+import os
 from solders.pubkey import Pubkey as PublicKey
 from solders.keypair import Keypair
 from solders.transaction import Transaction
@@ -20,10 +21,15 @@ from spl.token.instructions import (
 from spl.token.constants import TOKEN_PROGRAM_ID
 
 from decimal import Decimal
-
-from coin_tools.db import get_tickers
+from coin_tools.solana.tokens import fetch_token_metadata
 
 APPROX_RENT = 0.002
+
+def get_solana_client() -> Client:
+    rpc_url = os.getenv("COINTOOLS_RPC_URL")
+    if not rpc_url:
+        raise EnvironmentError("COINTOOLS_RPC_URL environment variable is not set.")
+    return Client(rpc_url)
 
 def parse_private_key_bytes(secret_bytes:bytes) -> Keypair:
     #    If the user has a 64-byte expanded key, use Keypair.from_bytes().
@@ -36,35 +42,33 @@ def parse_private_key_bytes(secret_bytes:bytes) -> Keypair:
     else:
         raise Exception(f"Private key must be 32 or 64 bytes, but got length {len(secret_bytes)}.")
 
-known_tokens = get_tickers()
-def get_token_details(mint_pubkey: PublicKey) -> tuple:
-    mint_str = str(mint_pubkey)
-    return known_tokens.get(mint_str, ("Unknown", "???"))
-
 def fetch_sol_balance(client: Client, pubkey: PublicKey) -> Decimal:
     resp = client.get_balance(pubkey)
     lamports = resp.value
     return Decimal(lamports) / Decimal(1_000_000_000)
 
-# Track which mint pubkeys we've already decoded to avoid repeated RPC calls
-mint_decimals_cache = {}
-def get_mint_decimals(client: Client, mint_pubkey: PublicKey) -> int:
-    mint_str = str(mint_pubkey)
-    if mint_str in mint_decimals_cache:
-        return mint_decimals_cache[mint_str]
-    
-    resp = client.get_account_info(mint_pubkey)
-    if resp.value is None:
-        # Possibly not a valid mint or no data
-        raise RuntimeError(f"No mint account found: {mint_pubkey}")
+def fetch_token_balance(client: Client, wallet_pubkey: PublicKey, mint_pubkey: PublicKey) -> Decimal:
+    # Derive associated token account
+    ata = get_associated_token_address(owner=wallet_pubkey, mint=mint_pubkey)
+    resp = client.get_token_account_balance(ata)
 
-    data_b64 = resp.value.data
-    decoded_mint = MINT_LAYOUT.parse(data_b64)
-    mint_decimals_cache[mint_str] = decoded_mint.decimals
-    return decoded_mint.decimals
+    try:
+        balance_info = resp.value
+    except AttributeError:
+        print(f"Error fetching token balance for ATA={ata}: {resp}")
+        return
+
+    if balance_info is None:
+        print(f"No token account found for CA={args.ca} or zero balance.")
+        return
+
+    raw_amount_str = str(balance_info.amount)
+    decimals = balance_info.decimals
+    token_balance = Decimal(raw_amount_str) / (Decimal(10) ** Decimal(decimals))
+    return token_balance
 
 
-def get_token_accounts(client: Client, wallet_pubkey: PublicKey):
+def fetch_token_accounts(client: Client, wallet_pubkey: PublicKey):
     token_opts = TokenAccountOpts(
         program_id=TOKEN_PROGRAM_ID,
         encoding="base64",
@@ -88,15 +92,15 @@ def get_token_accounts(client: Client, wallet_pubkey: PublicKey):
         mint_pubkey = PublicKey(acct.mint)
         amount = acct.amount
 
-        # 2) Get decimals from the mint account
-        decimals = get_mint_decimals(client, mint_pubkey)
-
+        # 2) Fetch the metadata from the mint account
+        metadata = fetch_token_metadata(client, mint_pubkey)
+        token_name = metadata["name"]
+        token_ticker = metadata["symbol"]
+        decimals = metadata["decimals"]
         # 3) Convert raw amount to real balance
         real_balance = Decimal(amount) / (Decimal(10) ** decimals)
 
-        # 4) Optional: name/ticker
-        token_name, token_ticker = get_token_details(mint_pubkey)
-
+        # 4) Append metadata
         results.append({
             "mint_pubkey": mint_pubkey,
             "amount": amount,

@@ -16,7 +16,8 @@ from coin_tools.db import (
     get_all_wallets,
 )
 
-from coin_tools.solana_utils import get_token_accounts, fetch_sol_balance, get_token_details
+from coin_tools.solana.utils import get_solana_client, fetch_token_accounts, fetch_sol_balance, fetch_token_balance
+from coin_tools.solana.tokens import fetch_token_metadata
 
 
 def get_sol_balance(args: argparse.Namespace):
@@ -25,17 +26,13 @@ def get_sol_balance(args: argparse.Namespace):
         print(f"No wallet found with ID={args.id}")
         return
 
-    rpc_url = os.getenv("COINTOOLS_RPC_URL")
-    if not rpc_url:
-        raise EnvironmentError("COINTOOLS_RPC_URL environment variable is not set.")
-
     try:
         pubkey = PublicKey.from_string(wallet["public_key"])
     except ValueError as e:
         print(f"Error parsing public key: {e}")
         return
 
-    client = Client(rpc_url)
+    client = get_solana_client()
 
     sol_balance = fetch_sol_balance(client, pubkey)
     print(f"Wallet ID={args.id} ({wallet['name']}), PublicKey={wallet['public_key']}):\n")
@@ -48,11 +45,7 @@ def get_token_balance(args):
         print(f"No wallet found with ID={args.id}")
         return
 
-    rpc_url = os.getenv("COINTOOLS_RPC_URL")
-    if not rpc_url:
-        raise EnvironmentError("COINTOOLS_RPC_URL environment variable is not set.")
-
-    client = Client(rpc_url)
+    client = get_solana_client()
 
     try:
         wallet_pubkey = PublicKey.from_string(wallet["public_key"])
@@ -62,7 +55,7 @@ def get_token_balance(args):
         return
     
     if args.ca is None:
-        token_accounts = get_token_accounts(client, wallet_pubkey)
+        token_accounts = fetch_token_accounts(client, wallet_pubkey)
         if len(token_accounts) ==  0:
             print("No token accounts found.")
             return
@@ -72,35 +65,17 @@ def get_token_balance(args):
             print(f"   {entry['token_name']} ({entry['token_ticker']}) CA: {entry['mint_pubkey']}")
             print(f"   Balance: {entry['real_balance']}\n")
     else:
-        # Derive associated token account
-        ata = get_associated_token_address(owner=wallet_pubkey, mint=token_mint_pubkey)
-        resp = client.get_token_account_balance(ata)
-
-        try:
-            balance_info = resp.value
-        except AttributeError:
-            print(f"Error fetching token balance for ATA={ata}: {resp}")
-            return
-
-        if balance_info is None:
-            print(f"No token account found for CA={args.ca} or zero balance.")
-            return
-
-        raw_amount_str = str(balance_info.amount)
-        decimals = balance_info.decimals
-        token_balance = Decimal(raw_amount_str) / (Decimal(10) ** Decimal(decimals))
-        token_name, token_ticker = get_token_details(token_mint_pubkey)
+        token_balance = fetch_token_balance(client, wallet_pubkey, token_mint_pubkey)
+        metadata = fetch_token_metadata(client, token_mint_pubkey)
+        token_name = metadata["name"]
+        token_ticker = metadata["symbol"]
         print(f"Wallet ID={args.id} ({wallet['name']}), Public Key={wallet['public_key']}:\n")
         print(f"   {token_name} ({token_ticker}) CA: {token_mint_pubkey}")
         print(f"   Balance: {token_balance}\n")
 
 
 def get_total_balance(args):
-    rpc_url = os.getenv("COINTOOLS_RPC_URL")
-    if not rpc_url:
-        raise EnvironmentError("COINTOOLS_RPC_URL environment variable is not set.")
-
-    client = Client(rpc_url)
+    client = get_solana_client()
 
     wallets = get_all_wallets()
     if len(wallets) == 0:
@@ -124,7 +99,7 @@ def get_total_balance(args):
             print(f"   SOL Balance: {sol_balance} SOL")
             
         # 2) Fetch token accounts
-        token_accounts = get_token_accounts(client, wallet_pubkey)
+        token_accounts = fetch_token_accounts(client, wallet_pubkey)
         for entry in token_accounts:
             mint_pubkey = entry["mint_pubkey"]
             real_balance = entry["real_balance"]
@@ -144,7 +119,9 @@ def get_total_balance(args):
     print(f"Total SOL Balance: {total_sol} SOL")
     print("Total Token Balances:")
     for mint_pubkey, balance in total_tokens.items():
-        token_name, token_ticker = get_token_details(mint_pubkey)
+        metadata = fetch_token_metadata(client, mint_pubkey)
+        token_name = metadata["name"]
+        token_ticker = metadata["symbol"]
         print(f"   {token_name} ({token_ticker}) CA: {mint_pubkey}")
         print(f"   Balance: {balance}\n")
 

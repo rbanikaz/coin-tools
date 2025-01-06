@@ -17,7 +17,7 @@ def main():
     # Initialize DB
     init_db()
 
-    # Register sub-commands
+    # # Register sub-commands
     register_wallets(subparsers)
     register_balances(subparsers)
     register_transfers(subparsers)

@@ -3,15 +3,15 @@ import base58
 from solders.keypair import Keypair
 
 from coin_tools.encryption import encrypt_data, decrypt_data
-from coin_tools.solana_utils import parse_private_key_bytes
+from coin_tools.solana.utils import parse_private_key_bytes
 from coin_tools.db import (
     insert_wallet,
     get_wallet_by_id,
     get_all_wallets,
     update_wallet_access_time,
     update_name,
-    upsert_ticker,
-    get_tickers,
+    get_token_metadata,
+    upsert_token_metadata,
     update_private_key
 )
 
@@ -95,21 +95,21 @@ def rename_wallet(args: argparse.Namespace):
     update_name(args.id, args.name)
     print(f"Wallet ID {args.id} renamed to '{args.name}'.")
 
-def manage_ticker(args: argparse.Namespace):
+def manage_metadata(args: argparse.Namespace):
     if args.list:
-        tickers = get_tickers()
-        if not tickers:
+        metadata = get_token_metadata()
+        if not metadata:
             print("No tickers found.")
             return
-        for ca, (coin, ticker) in tickers.items():
-            print(f"{ca}: {coin} ({ticker})")
+        for ca, metadata in metadata.items():
+            print(f"{ca}: {metadata})")
         return
     elif args.update:
-        if not args.ca or not args.coin or not args.ticker:
-            print("Missing required arguments: --ca, --coin, --ticker")
+        if not args.ca or not args.name or not args.symbol or not args.uri or not args.decimals:
+            print("Missing required arguments: --ca, --name, --symbol, --uri, --decimals")
             return
-        upsert_ticker(args.ca, args.coin, args.ticker)
-        print(f"Ticker for {args.ca} updated: {args.coin} ({args.ticker})")
+        upsert_token_metadata(args.ca, args.name, args.symbol, args.uri, int(args.decimals))
+        print(f"Ticker for {args.ca} updated.")
 
 def manage_encryption(args: argparse.Namespace):
     if args.generate_key:
@@ -155,8 +155,8 @@ def wallets_command(args: argparse.Namespace):
         import_wallet(args)
     elif args.wallet_cmd == "rename":
         rename_wallet(args)
-    elif args.wallet_cmd == "ticker":
-        manage_ticker(args)
+    elif args.wallet_cmd == "metadata":
+        manage_metadata(args)
     elif args.wallet_cmd == "encryption":
         manage_encryption(args)
     else:
@@ -197,12 +197,14 @@ def register(subparsers):
     rename_parser.add_argument("--name", required=True, help="New name for the wallet")
 
     # ticker
-    ticker_parser = wallet_subparsers.add_parser("ticker", help="Manage tickers for known tokens.")
-    ticker_parser.add_argument("--list", required=False, action="store_true", help="List all known tickers.")
-    ticker_parser.add_argument("--update", required=False, action="store_true", help="Update (or add if not exists) to known tickers.")
+    ticker_parser = wallet_subparsers.add_parser("metadata", help="Manage metadata for known tokens.")
+    ticker_parser.add_argument("--list", required=False, action="store_true", help="List all known tokens.")
+    ticker_parser.add_argument("--update", required=False, action="store_true", help="Update (or add if not exists) to known tokens.")
     ticker_parser.add_argument("--ca", required=False, help="Token contract/mint address (CA).")
-    ticker_parser.add_argument("--coin", required=False, help="Coin name.")
-    ticker_parser.add_argument("--ticker", required=False, help="Coin ticker symbol.")
+    ticker_parser.add_argument("--name", required=False, help="Coin name.")
+    ticker_parser.add_argument("--symbol", required=False, help="Coin ticker symbol.")
+    ticker_parser.add_argument("--uri", required=False, help="Coin URI.")
+    ticker_parser.add_argument("--decimals", required=False, help="Coin decimals.")
 
     # encryption
     encryption_parser = wallet_subparsers.add_parser("encryption", help="Manage encryption settings.")
