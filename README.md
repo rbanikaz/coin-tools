@@ -12,6 +12,11 @@ CoinTools is a command line application for working with solana wallets.
 
 It stores wallets locally in sqlite and has scripts for getting balances, moving sol and tokens around and trading
 
+### Donation address:
+```
+DYwtGzZ3jzRLydZPoEhRbbjREWcsUMHBGTEaoGHS3sYK
+```
+
 ### Getting Started
 
 * Create venv:
