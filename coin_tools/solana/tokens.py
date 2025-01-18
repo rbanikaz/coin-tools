@@ -1,26 +1,19 @@
-from solders.pubkey import Pubkey as PublicKey
-from solders.keypair import Keypair
-from solders.transaction import Transaction
-from solders.pubkey import Pubkey as PublicKey
-from solders.keypair import Keypair
-from solders.system_program import TransferParams, transfer
-from solders.message import Message
-from solana.rpc.api import Client
-from solana.rpc.types import TxOpts
-
-from solana.rpc.types import TokenAccountOpts
-from spl.token.constants import TOKEN_PROGRAM_ID
-from spl.token._layouts import ACCOUNT_LAYOUT, MINT_LAYOUT
-from spl.token.instructions import (
-    TransferParams as SplTransferParams,
-    get_associated_token_address,
-    create_idempotent_associated_token_account,
-)
-from spl.token.constants import TOKEN_PROGRAM_ID
-
 from decimal import Decimal
-from base64 import b64decode
-import json
+
+from solana.rpc.api import Client
+from solana.rpc.types import TokenAccountOpts, TxOpts
+from solders.keypair import Keypair #type: ignore
+from solders.message import Message #type: ignore
+from solders.pubkey import Pubkey as PublicKey #type: ignore
+from solders.transaction import Transaction #type: ignore
+from spl.token._layouts import ACCOUNT_LAYOUT, MINT_LAYOUT
+from spl.token.constants import TOKEN_PROGRAM_ID
+
+from spl.token.instructions import (
+    create_idempotent_associated_token_account,
+    get_associated_token_address,
+)
+
 from coin_tools.db import get_token_metadata, upsert_token_metadata
 from coin_tools.solana.metaplex_parse import parse_metaplex
 from coin_tools.solana.utils import APPROX_RENT, fetch_sol_balance
@@ -133,7 +126,7 @@ def fetch_or_create_token_account(client: Client, payer_pubkey: PublicKey, owner
         sol_balance = fetch_sol_balance(client, payer_pubkey)
 
         if sol_balance < APPROX_RENT:
-            raise Exception(f"Recipient Account does not exist and payer does not have enough SOL to create it.")
+            raise Exception("Recipient Account does not exist and payer does not have enough SOL to create it.")
 
         print(f"Token Account {ata} does not exist. Creating...")
         create_ata_ix = create_idempotent_associated_token_account(

@@ -1,5 +1,15 @@
 #!/bin/bash
 export COINTOOLS_HOME=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+export COINTOOLS_ENV_FILE="$HOME/.ssh/coin-tools.env"
+
+if [ -f .venv/bin/activate ]; then
+  source .venv/bin/activate
+fi
+
+if [ -f "$COINTOOLS_ENV_FILE" ]; then
+  source $COINTOOLS_ENV_FILE
+fi 
+
 export PYTHONPATH="$COINTOOLS_HOME:$PYTHONPATH"
 
 python -m coin_tools.main "$@"

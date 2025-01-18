@@ -1,4 +1,4 @@
-from construct import Struct, Int8ul, Int16ul, Int32ul, Bytes, Padding, GreedyBytes
+from construct import Struct, Int8ul, Int16ul, Int32ul, Bytes, GreedyBytes
 
 PARTIAL_METADATA_LAYOUT = Struct(
     "key" / Int8ul,
@@ -26,9 +26,9 @@ def parse_metaplex(raw_data: bytes):
     metadata = PARTIAL_METADATA_LAYOUT.parse(raw_data)
 
     return {
-        "name": metadata.name.decode("utf-8", errors="replace").rstrip('\x00'),
-        "symbol": metadata.symbol.decode("utf-8", errors="replace").rstrip('\x00'),
-        "uri": metadata.uri.decode("utf-8", errors="replace").rstrip('\x00')
+        "name": metadata.name.decode("utf-8", errors="replace").rstrip('\x00').rstrip(),
+        "symbol": metadata.symbol.decode("utf-8", errors="replace").rstrip('\x00').rstrip(),
+        "uri": metadata.uri.decode("utf-8", errors="replace").rstrip('\x00').rstrip()
     }
 
 if __name__ == "__main__":

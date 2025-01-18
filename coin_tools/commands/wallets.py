@@ -1,19 +1,21 @@
 import argparse
-import base58
-from solders.keypair import Keypair
 
-from coin_tools.encryption import encrypt_data, decrypt_data
-from coin_tools.solana.utils import parse_private_key_bytes
+import base58
+from solders.keypair import Keypair #type: ignore
+
 from coin_tools.db import (
-    insert_wallet,
-    get_wallet_by_id,
     get_all_wallets,
-    update_wallet_access_time,
-    update_name,
     get_token_metadata,
+    get_wallet_by_id,
+    insert_wallet,
+    update_name,
+    update_private_key,
+    update_wallet_access_time,
     upsert_token_metadata,
-    update_private_key
 )
+from coin_tools.encryption import decrypt_data, encrypt_data
+from coin_tools.solana.utils import parse_private_key_bytes
+
 
 def create_wallet(args: argparse.Namespace):
     name = args.name

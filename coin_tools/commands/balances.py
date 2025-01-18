@@ -1,24 +1,19 @@
 import argparse
-import base58
-import base64
 
-from solders.pubkey import Pubkey as PublicKey
-from solana.rpc.api import Client
+from solana.constants import LAMPORTS_PER_SOL
+from solders.pubkey import Pubkey as PublicKey #type: ignore
 
-from spl.token.instructions import get_associated_token_address
-
-from decimal import Decimal
-
-import os
-from coin_tools.encryption import decrypt_data
 from coin_tools.db import (
-    get_wallet_by_id,
     get_all_wallets,
+    get_wallet_by_id,
 )
 
-from coin_tools.solana.utils import get_solana_client, fetch_sol_balance, fetch_token_balance
 from coin_tools.solana.tokens import fetch_token_accounts, fetch_token_metadata
-
+from coin_tools.solana.utils import (
+    fetch_sol_balance,
+    fetch_token_balance,
+    get_solana_client,
+)
 
 def get_sol_balance(args: argparse.Namespace):
     wallet = get_wallet_by_id(args.id)
@@ -95,7 +90,7 @@ def get_total_balance(args):
         # 1) Fetch SOL balance
         resp = client.get_balance(wallet_pubkey)
         lamports = resp.value
-        sol_balance = lamports / 1_000_000_000
+        sol_balance = lamports / LAMPORTS_PER_SOL
         total_sol += sol_balance
 
         if args.list:
@@ -138,8 +133,6 @@ def balances_command(args: argparse.Namespace):
         get_sol_balance(args)
     elif args.balances_cmd == "get-token-balance":
         get_token_balance(args)
-    elif args.balances_cmd == "get-tokens":
-        get_tokens(args)
     elif args.balances_cmd == "get-total-balance":
         get_total_balance(args)
     else:

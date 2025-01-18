@@ -1,33 +1,33 @@
 import argparse
-import os, traceback
+import traceback
 from decimal import Decimal
-from solders.transaction import Transaction
-from solders.pubkey import Pubkey as PublicKey
-from solders.keypair import Keypair
-from solders.system_program import TransferParams, transfer
-from solders.message import Message
-from solders.transaction import VersionedTransaction
 
-from solders.rpc.responses import SendTransactionResp
-from solders.instruction import CompiledInstruction
-from solders.hash import Hash
-
-from solana.rpc.api import Client
 from solana.rpc.types import TxOpts
+from solders.message import Message  #type: ignore
+from solders.pubkey import Pubkey as PublicKey  #type: ignore
+from solders.system_program import TransferParams, transfer
+from solders.transaction import Transaction  #type: ignore
+from solders.compute_budget import set_compute_unit_limit, set_compute_unit_price  # type: ignore
 
-from spl.token.instructions import (
-    transfer as spl_transfer,
-    TransferParams as SplTransferParams,
-    get_associated_token_address,
-    create_associated_token_account,
-)
-from spl.token.constants import TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
+from spl.token.constants import TOKEN_PROGRAM_ID
+from spl.token.instructions import TransferParams as SplTransferParams
+from spl.token.instructions import get_associated_token_address
+from spl.token.instructions import transfer as spl_transfer
 
-from coin_tools.solana.utils import APPROX_RENT, get_solana_client
-from coin_tools.solana.utils import parse_private_key_bytes, fetch_sol_balance
-from coin_tools.solana.tokens import fetch_or_create_token_account, fetch_token_accounts, fetch_token_metadata
 from coin_tools.db import get_wallet_by_id, update_wallet_access_time
 from coin_tools.encryption import decrypt_data
+from coin_tools.solana.tokens import (
+    fetch_or_create_token_account,
+    fetch_token_accounts,
+    fetch_token_metadata,
+)
+from coin_tools.solana.utils import (
+    APPROX_RENT,
+    fetch_sol_balance,
+    get_solana_client,
+    parse_private_key_bytes,
+    send_transaction
+)
 
 
 def transfer_sol(args: argparse.Namespace):
@@ -39,7 +39,7 @@ def transfer_sol(args: argparse.Namespace):
     to_wallet = get_wallet_by_id(args.to_id)
 
     if not from_wallet or not to_wallet:
-        print(f"Error: Wallet(s) not found.")
+        print("Error: Wallet(s) not found.")
         return
 
     client = get_solana_client()
@@ -70,27 +70,19 @@ def transfer_sol(args: argparse.Namespace):
           )
       )
 
-      recent_blockhash = client.get_latest_blockhash().value.blockhash
+      instructions = [
+          set_compute_unit_limit(args.unit_limit),
+          set_compute_unit_price(args.unit_price),
+          transfer_ix
+      ]
 
-      message = Message.new_with_blockhash(
-          instructions=[transfer_ix],
-          blockhash=recent_blockhash,
-          payer=from_pubkey
-      )
+      txn_signature = send_transaction(client, from_keypair, instructions, should_confirm=args.confirm)
+      if txn_signature:
+        print(f"Transaction Sent: {args.amount} SOL from {from_wallet['public_key']} to {to_wallet['public_key']}.")
+        print(f"Signature: {txn_signature}")
+        update_wallet_access_time(args.from_id)
+        update_wallet_access_time(args.to_id)
 
-      transaction = Transaction.new_unsigned(message)
-      transaction.sign([from_keypair], recent_blockhash=recent_blockhash)
-
-      txn_opts = TxOpts(skip_confirmation=False) if args.confirm else TxOpts(skip_confirmation=True)
-      response = client.send_transaction(transaction, opts=txn_opts)
-      
-      if response.value:
-          print(f"Transaction Sent: {args.amount} SOL from {from_wallet['public_key']} to {to_wallet['public_key']}.")
-          print(f"Signature: {response.value}")
-          update_wallet_access_time(args.from_id)
-          update_wallet_access_time(args.to_id)
-      else:
-          print(f"Failed to send transaction: {response}")
     except Exception as e:
       print(f"Error sending transaction: {e}")
       traceback.print_exc()
@@ -105,7 +97,7 @@ def transfer_token(args: argparse.Namespace):
     to_wallet = get_wallet_by_id(args.to_id)
 
     if not from_wallet or not to_wallet:
-        print(f"Error: Wallet(s) not found.")
+        print("Error: Wallet(s) not found.")
         return
 
     client = get_solana_client()
@@ -151,32 +143,20 @@ def transfer_token(args: argparse.Namespace):
             )
         )
 
-        # Get recent blockhash
-        recent_blockhash = client.get_latest_blockhash().value.blockhash
+        instructions = [
+          set_compute_unit_limit(args.unit_limit),
+          set_compute_unit_price(args.unit_price),
+          transfer_ix
+        ]
 
-        # Create transaction message
-        message = Message.new_with_blockhash(
-            instructions=[transfer_ix],
-            blockhash=recent_blockhash,
-            payer=from_pubkey
-        )
-
-        # Create and sign the transaction
-        transaction = Transaction.new_unsigned(message)
-        transaction.sign([from_keypair], recent_blockhash=recent_blockhash)
-
-        # Send the transaction
-        txn_opts = TxOpts(skip_confirmation=False) if args.confirm else TxOpts(skip_confirmation=True)
-        response = client.send_transaction(transaction, opts=txn_opts)
-        
-        # Check response
-        if response.value:
+        txn_signature = send_transaction(client, from_keypair, instructions, should_confirm=args.confirm)
+        if txn_signature:
             print(f"Transaction Sent: {args.amount} ({args.ca}) tokens from {from_wallet['public_key']} to {to_wallet['public_key']}.")
-            print(f"Transaction Signature: {response.value}")
+            print(f"Transaction Signature: {txn_signature}")
             update_wallet_access_time(args.from_id)
             update_wallet_access_time(args.to_id)
-        else:
-            print(f"Failed to send transaction: {response}")
+        
+            
     except Exception as e:
         print(f"Error transferring token: {e}")
         traceback.print_exc()
@@ -187,12 +167,11 @@ def migrate(args: argparse.Namespace):
     to_wallet = get_wallet_by_id(args.to_id)
 
     if not from_wallet or not to_wallet:
-        print(f"Error: Wallet(s) not found.")
+        print("Error: Wallet(s) not found.")
         return
 
     client = get_solana_client()
     from_pubkey = PublicKey.from_string(from_wallet["public_key"])
-    to_pubkey = PublicKey.from_string(to_wallet["public_key"])
 
     if args.tokens:
       # Transfer all tokens
@@ -214,12 +193,13 @@ def migrate(args: argparse.Namespace):
     if args.sol:
       try:
           sol_balance = fetch_sol_balance(client, from_pubkey)
-          amount_to_transfer = Decimal(sol_balance) - Decimal(0.001)  # Leave a little for fees
+          amount_to_transfer = Decimal(sol_balance) - Decimal(APPROX_RENT)  # Leave a little for rent
           args.amount = str(amount_to_transfer)
           args.confirm = False
           transfer_sol(args)
       except Exception as e:
           print(f"Error transferring SOL during migration: {e}")
+          return
 
 
 def transfers_command(args: argparse.Namespace):
@@ -259,6 +239,9 @@ def register(subparsers):
     transfer_sol_parser.add_argument("--to-id", type=int, required=True, help="Destination wallet ID.")
     transfer_sol_parser.add_argument("--amount", required=True, help="Amount of SOL to transfer.")
     transfer_sol_parser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
+    transfer_sol_parser.add_argument("--unit-limit", type=int, default=100_000, help="Unit limit")
+    transfer_sol_parser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
+
 
     # transfer-token
     transfer_token_parser = transfers_subparsers.add_parser(
@@ -270,7 +253,8 @@ def register(subparsers):
     transfer_token_parser.add_argument("--amount", required=True, help="Amount of token to transfer.")
     transfer_token_parser.add_argument("--ca", required=True, help="Token contract/mint address (CA).")
     transfer_token_parser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
-
+    transfer_token_parser.add_argument("--unit-limit", type=int, default=100_000, help="Unit limit")
+    transfer_token_parser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
 
     # migrate
     migrate_parser = transfers_subparsers.add_parser(
@@ -281,3 +265,5 @@ def register(subparsers):
     migrate_parser.add_argument("--to-id", type=int, required=True, help="Destination wallet ID.")
     migrate_parser.add_argument("--tokens", action="store_true", help="Migrate tokens.")
     migrate_parser.add_argument("--sol", action="store_true", help="Migrate SOL.")
+    migrate_parser.add_argument("--unit-limit", type=int, default=100_000, help="Unit limit")
+    migrate_parser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
