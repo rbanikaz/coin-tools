@@ -2,11 +2,8 @@ import argparse
 import traceback
 from decimal import Decimal
 
-from solana.rpc.types import TxOpts
-from solders.message import Message  #type: ignore
 from solders.pubkey import Pubkey as PublicKey  #type: ignore
 from solders.system_program import TransferParams, transfer
-from solders.transaction import Transaction  #type: ignore
 from solders.compute_budget import set_compute_unit_limit, set_compute_unit_price  # type: ignore
 
 from spl.token.constants import TOKEN_PROGRAM_ID
