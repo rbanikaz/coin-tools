@@ -8,6 +8,7 @@ from coin_tools.encryption import decrypt_data
 
 from coin_tools.db import get_wallet_by_id, update_wallet_access_time
 from coin_tools.pump_fun.buy import buy as pumpfun_buy
+from coin_tools.pump_fun.sell import sell as pumpfun_sell
 from coin_tools.pump_fun.coin_data import fetch_coin_data
 from coin_tools.solana.tokens import fetch_token_metadata
 from coin_tools.solana.utils import (
@@ -73,11 +74,50 @@ def buy(args: argparse.Namespace):
     client = get_solana_client()
     
     try:
-      txn_signature = pumpfun_buy(client, buyer_keypair, mint_pubkey, args.amount_in_sol, args.slippage, args.unit_limit, args.unit_price)
+      txn_signature = pumpfun_buy(client, 
+                                  buyer_keypair, 
+                                  mint_pubkey, 
+                                  args.amount_in_sol, 
+                                  args.slippage, 
+                                  args.unit_limit, 
+                                  args.unit_price, 
+                                  args.confirm)
       print(f"Transaction Sent: {args.amount_in_sol} SOL to buy {args.ca}. Signature: {txn_signature}")
       update_wallet_access_time(args.id)
     except Exception as e:
       print(f"Error buying token: {e}")
+      traceback.print_exc()
+      return
+    
+
+def sell(args: argparse.Namespace):
+    wallet = get_wallet_by_id(args.id)
+    if not wallet:
+        print(f"No wallet found with ID={args.id}")
+        return
+    try:
+      mint_pubkey = PublicKey.from_string(args.ca)
+      from_private_key = decrypt_data(wallet["private_key_encrypted"])
+      seller_keypair = parse_private_key_bytes(from_private_key)
+    except Exception as e:
+        print(f"Error parsing keypair: {e}")
+        return
+    
+    client = get_solana_client()
+    
+    try:
+      txn_signature = pumpfun_sell(client, 
+                                   seller_keypair, 
+                                   mint_pubkey, 
+                                   args.amount_in_token, 
+                                   args.slippage, 
+                                   args.unit_limit, 
+                                   args.unit_price, 
+                                   args.confirm)
+      print(f"Transaction Sent: {args.amount_in_token} of {args.ca} sold. Signature: {txn_signature}")
+      update_wallet_access_time(args.id)
+    except Exception as e:
+      print(f"Error selling token: {e}")
       traceback.print_exc()
       return
 
@@ -86,6 +126,8 @@ def pumpfun_command(args: argparse.Namespace):
         get_data(args)
     elif args.pump_fun_cmd == "buy":
         buy(args)
+    elif args.pump_fun_cmd == "sell":
+        sell(args)
     else:
         print("Unknown sub-command for pump-fun")
         if hasattr(args, 'parser'):
@@ -111,4 +153,14 @@ def register(subparsers):
     buy_subparser.add_argument("--slippage", type=int, default=5, help="Slippage tolerance percentage")
     buy_subparser.add_argument("--unit-limit", type=int, default=100_000, help="Unit limit")
     buy_subparser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
+    buy_subparser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
+
+    sell_subparser = pumpfun_subparsers.add_parser("sell", help="Sell coin on pump.fun")
+    sell_subparser.add_argument("--id", type=int, required=True, help="Wallet ID.")
+    sell_subparser.add_argument("--ca", required=True, help="Token contract/mint address (CA).")
+    sell_subparser.add_argument("--amount-in-token", type=float, required=True, help="Amount of token to sell")
+    sell_subparser.add_argument("--slippage", type=int, default=5, help="Slippage tolerance percentage")
+    sell_subparser.add_argument("--unit-limit", type=int, default=100_000, help="Unit limit")
+    sell_subparser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
+    sell_subparser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
 
