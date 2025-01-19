@@ -82,6 +82,11 @@ optional arguments:
   --id ID     Wallet ID.
 ```
 
+Simple volume bot
+```
+while true; do ./coin-tools pump-fun bulk-trade --ids $WALLET_LIST --amount 0.03 --randomize 0.9 --random-delay 10-60 --ca $CA --buy-rate 0.8 --shuffle ; sleep 60; done
+```
+
 ### Notes on encryption:
 Private keys are encrypted using a fernet key which is read in as an environment variable.
 
@@ -112,6 +117,3 @@ Please set the new key as the COINTOOLS_ENC_KEY environment variable.
 
 TODO (not priority order):
 1. Wallet deletion (close solana account, reclaim SOL, etc)
-2. Add balance checking to transfer and pump fun
-3. Pump Fun buy/sell
-4. Volume bot

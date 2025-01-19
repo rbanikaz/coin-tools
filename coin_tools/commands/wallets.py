@@ -1,5 +1,4 @@
 import argparse
-from math import e
 
 import base58
 from solders.keypair import Keypair #type: ignore
@@ -190,7 +189,7 @@ def register(subparsers):
     create_parser.add_argument("--name", required=True, help="Name of the wallet")
 
     # list
-    list_parser = wallet_subparsers.add_parser("list", help="List all wallets.")
+    wallet_subparsers.add_parser("list", help="List all wallets.") 
 
     # get
     get_parser = wallet_subparsers.add_parser("get", help="Get a single wallet by ID.")

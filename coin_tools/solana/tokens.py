@@ -1,13 +1,12 @@
 from decimal import Decimal
 
 from solana.rpc.api import Client
-from solana.rpc.types import TokenAccountOpts, TxOpts
 from solders.keypair import Keypair #type: ignore
-from solders.message import Message #type: ignore
 from solders.pubkey import Pubkey as PublicKey #type: ignore
-from solders.transaction import Transaction #type: ignore
 from spl.token._layouts import ACCOUNT_LAYOUT, MINT_LAYOUT
 from spl.token.constants import TOKEN_PROGRAM_ID
+from spl.token.core import TokenAccountOpts
+
 
 from spl.token.instructions import (
     create_idempotent_associated_token_account,
