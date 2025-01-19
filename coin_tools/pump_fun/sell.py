@@ -50,7 +50,7 @@ def sell(
     token_metadata = fetch_token_metadata(client, mint_pubkey)
     token_dec = 10 ** token_metadata["decimals"]
     seller_pubkey = seller_keypair.pubkey()
-    seller_token_account = fetch_or_create_token_account(
+    seller_token_account, create_ata_ix = fetch_or_create_token_account(
         client, seller_pubkey, seller_pubkey, mint_pubkey, seller_keypair
     )
     
@@ -89,13 +89,17 @@ def sell(
     data.extend(bytes.fromhex("33e685a4017f83ad"))
     data.extend(struct.pack("<Q", amount))
     data.extend(struct.pack("<Q", min_sol_output))
-    swap_instruction = Instruction(PUMP_FUN_PROGRAM, bytes(data), keys)
+    swap_ix = Instruction(PUMP_FUN_PROGRAM, bytes(data), keys)
 
     instructions = [
         set_compute_unit_limit(unit_limit),
-        set_compute_unit_price(unit_price),
-        swap_instruction
+        set_compute_unit_price(unit_price)
     ]
+
+    if create_ata_ix:
+        instructions.append(create_ata_ix)
+    
+    instructions.append(swap_ix)
     
     print("Sending transaction...")
     txn_signature = send_transaction(client, seller_keypair, instructions, should_confirm=confirm)

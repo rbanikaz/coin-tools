@@ -1,5 +1,6 @@
 import argparse
 import traceback
+
 from decimal import Decimal
 
 from solders.pubkey import Pubkey as PublicKey  #type: ignore
@@ -11,6 +12,7 @@ from spl.token.instructions import TransferParams as SplTransferParams
 from spl.token.instructions import get_associated_token_address
 from spl.token.instructions import transfer as spl_transfer
 
+from coin_tools.utils import randomize_by_percentage, random_delay_from_range
 from coin_tools.db import get_wallet_by_id, update_wallet_access_time
 from coin_tools.encryption import decrypt_data
 from coin_tools.solana.tokens import (
@@ -44,7 +46,7 @@ def transfer_sol(args: argparse.Namespace):
     try:
         from_pubkey = PublicKey.from_string(from_wallet["public_key"])
         to_pubkey = PublicKey.from_string(to_wallet["public_key"])
-        amount_lamports = int(Decimal(args.amount) * 1_000_000_000)
+        amount_lamports = int(args.amount * 1_000_000_000)
     except ValueError as e:
         print(f"Error parsing public keys or amount: {e}")
         return
@@ -104,7 +106,7 @@ def transfer_token(args: argparse.Namespace):
         to_pubkey = PublicKey.from_string(to_wallet["public_key"])
         token_mint_pubkey = PublicKey.from_string(args.ca)
         metadata = fetch_token_metadata(client, token_mint_pubkey)
-        amount = int(Decimal(args.amount) * (10 ** metadata["decimals"])) 
+        amount = int(args.amount * 10 ** metadata["decimals"])
     except ValueError as e:
         print(f"Error parsing public keys or amount: {e}")
         return
@@ -120,7 +122,7 @@ def transfer_token(args: argparse.Namespace):
     try:
       # Get associated token accounts
       from_ata = get_associated_token_address(owner=from_pubkey, mint=token_mint_pubkey)
-      to_ata = fetch_or_create_token_account(client, from_pubkey, to_pubkey, token_mint_pubkey, from_keypair)
+      to_ata, create_ata_ix = fetch_or_create_token_account(client, from_pubkey, to_pubkey, token_mint_pubkey, from_keypair)
       print(f"Sending From: WalletID: {args.from_id}, PublicKey: {from_wallet['public_key']} ATA: {from_ata}")
       print(f"Sending To: WalletID: {args.to_id}, PublicKey: {to_wallet['public_key']} ATA: {to_ata}")
     except Exception as e:
@@ -142,10 +144,14 @@ def transfer_token(args: argparse.Namespace):
 
         instructions = [
           set_compute_unit_limit(args.unit_limit),
-          set_compute_unit_price(args.unit_price),
-          transfer_ix
+          set_compute_unit_price(args.unit_price)
         ]
 
+        if create_ata_ix:
+          instructions.append(create_ata_ix)
+        
+        instructions.append(transfer_ix)
+        
         txn_signature = send_transaction(client, from_keypair, instructions, should_confirm=args.confirm)
         if txn_signature:
             print(f"Transaction Sent: {args.amount} ({args.ca}) tokens from {from_wallet['public_key']} to {to_wallet['public_key']}.")
@@ -157,6 +163,56 @@ def transfer_token(args: argparse.Namespace):
     except Exception as e:
         print(f"Error transferring token: {e}")
         traceback.print_exc()
+
+
+def bulk_transfer_sol(args: argparse.Namespace):
+    from_wallet = get_wallet_by_id(args.from_id)
+    to_wallets = [get_wallet_by_id(id) for id in args.to_ids.split(",")]
+    
+    if not from_wallet or not all(to_wallets):
+        print("Error: Wallet(s) not found.")
+        return
+    
+    original_amount = args.amount
+
+    for to_id in args.to_ids.split(","):
+        amount = original_amount
+
+        if args.randomize:
+            amount = randomize_by_percentage(amount, args.randomize)
+        
+        args.to_id = to_id
+        args.amount = amount
+        
+        transfer_sol(args)
+
+        if args.random_delays:
+            random_delay_from_range(args.random_delays)
+
+
+def bulk_transfer_token(args: argparse.Namespace):
+    from_wallet = get_wallet_by_id(args.from_id)
+    to_wallets = [get_wallet_by_id(id) for id in args.to_ids.split(",")]
+    
+    if not from_wallet or not all(to_wallets):
+        print("Error: Wallet(s) not found.")
+        return
+    
+    original_amount = args.amount
+
+    for to_id in args.to_ids.split(","):
+        amount = original_amount
+
+        if args.randomize:
+            amount = randomize_by_percentage(amount, args.randomize)
+        
+        args.to_id = to_id
+        args.amount = amount
+        
+        transfer_token(args)
+
+        if args.random_delays:
+            random_delay_from_range(args.random_delays)
 
 
 def migrate(args: argparse.Namespace):
@@ -205,8 +261,12 @@ def transfers_command(args: argparse.Namespace):
     """
     if args.transfers_cmd == "transfer-sol":
         transfer_sol(args)
+    elif args.transfers_cmd == "bulk-transfer-sol":
+        bulk_transfer_sol(args)
     elif args.transfers_cmd == "transfer-token":
         transfer_token(args)
+    elif args.transfers_cmd == "bulk-transfer-token":
+        bulk_transfer_token(args)
     elif args.transfers_cmd == "migrate":
         migrate(args)
     else:
@@ -239,6 +299,21 @@ def register(subparsers):
     transfer_sol_parser.add_argument("--unit-limit", type=int, default=100_000, help="Unit limit")
     transfer_sol_parser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
 
+    # # bulk-transfer-sol
+    bulk_transfer_sol_parser = transfers_subparsers.add_parser(
+        "bulk-transfer-sol",
+        help="Bulk transfer sol from one wallet to set of wallets."
+    )
+    bulk_transfer_sol_parser.add_argument("--from-id", type=int, required=True, help="Source wallet ID.")
+    bulk_transfer_sol_parser.add_argument("--to-ids", required=True, help="Comma separated list of destination wallet ID's.")
+    bulk_transfer_sol_parser.add_argument("--amount", type=float, required=True, help="Amount of SOL to transfer.")
+    bulk_transfer_sol_parser.add_argument("--randomize", type=float, required=False, 
+                                            help="Randomize by this percentage.  For example if amount is 100 and randomize is 0.1 then values will range from 90 to 110.")
+    bulk_transfer_sol_parser.add_argument("--random-delays", required=False, help="Insert random delays within this range in seconds (e.g. 1-20).")
+    bulk_transfer_sol_parser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
+    bulk_transfer_sol_parser.add_argument("--unit-limit", type=int, default=100_000, help="Unit limit")
+    bulk_transfer_sol_parser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
+
 
     # transfer-token
     transfer_token_parser = transfers_subparsers.add_parser(
@@ -247,11 +322,27 @@ def register(subparsers):
     )
     transfer_token_parser.add_argument("--from-id", type=int, required=True, help="Source wallet ID.")
     transfer_token_parser.add_argument("--to-id", type=int, required=True, help="Destination wallet ID.")
-    transfer_token_parser.add_argument("--amount", required=True, help="Amount of token to transfer.")
+    transfer_token_parser.add_argument("--amount", type=float, required=True, help="Amount of token to transfer.")
     transfer_token_parser.add_argument("--ca", required=True, help="Token contract/mint address (CA).")
     transfer_token_parser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
     transfer_token_parser.add_argument("--unit-limit", type=int, default=100_000, help="Unit limit")
     transfer_token_parser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
+    
+    # bulk-transfer-token
+    bulk_transfer_token_parser = transfers_subparsers.add_parser(
+        "bulk-transfer-token",
+        help="Bulk transfer a token from one wallet to set of wallets."
+    )
+    bulk_transfer_token_parser.add_argument("--from-id", type=int, required=True, help="Source wallet ID.")
+    bulk_transfer_token_parser.add_argument("--to-ids", required=True, help="Comma separated list of destination wallet ID's.")
+    bulk_transfer_token_parser.add_argument("--amount", type=float, required=True, help="Amount of token to transfer.")
+    bulk_transfer_token_parser.add_argument("--randomize", type=float, required=False, 
+                                            help="Randomize by this percentage.  For example if amount is 100 and randomize is 0.1 then values will range from 90 to 110.")
+    bulk_transfer_token_parser.add_argument("--random-delays", required=False, help="Insert random delays within this range in seconds (e.g. 1-20).")
+    bulk_transfer_token_parser.add_argument("--ca", required=True, help="Token contract/mint address (CA).")
+    bulk_transfer_token_parser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
+    bulk_transfer_token_parser.add_argument("--unit-limit", type=int, default=100_000, help="Unit limit")
+    bulk_transfer_token_parser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
 
     # migrate
     migrate_parser = transfers_subparsers.add_parser(

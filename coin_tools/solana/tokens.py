@@ -135,23 +135,6 @@ def fetch_or_create_token_account(client: Client, payer_pubkey: PublicKey, owner
             mint=mint_pubkey
         )
 
-        blockhash_resp = client.get_latest_blockhash()
-        recent_blockhash = blockhash_resp.value.blockhash
+        return ata, create_ata_ix
 
-        message = Message.new_with_blockhash(
-            instructions=[create_ata_ix],
-            blockhash=recent_blockhash,
-            payer=payer_pubkey,
-        )
-
-        transaction = Transaction.new_unsigned(message)
-        transaction.sign([signer_keypair], recent_blockhash=recent_blockhash)
-
-        response = client.send_transaction(transaction, opts=TxOpts(skip_confirmation=False))
-        if response.value:
-            print(f"Transaction confirmed. Signature: {response.value}")
-        else:
-            raise Exception(f"Failed to send transaction: {response}")
-
-
-    return ata
+    return ata, None

@@ -1,4 +1,5 @@
 import argparse
+from math import e
 
 import base58
 from solders.keypair import Keypair #type: ignore
@@ -12,6 +13,7 @@ from coin_tools.db import (
     update_private_key,
     update_wallet_access_time,
     upsert_token_metadata,
+    update_wallet_status
 )
 from coin_tools.encryption import decrypt_data, encrypt_data
 from coin_tools.solana.utils import parse_private_key_bytes
@@ -146,6 +148,11 @@ def manage_encryption(args: argparse.Namespace):
         if hasattr(args, 'parser'):
             args.parser.print_help()
 
+def delete_wallet(args: argparse.Namespace):
+    print("Delete wallet stub, just soft deletion, accounts still exist on blockchain.")
+    update_wallet_status(args.id, "deleted")
+    print(f"Wallet ID {args.id} deleted.")
+
 def wallets_command(args: argparse.Namespace):
     if args.wallet_cmd == "create":
         create_wallet(args)
@@ -161,6 +168,8 @@ def wallets_command(args: argparse.Namespace):
         manage_metadata(args)
     elif args.wallet_cmd == "encryption":
         manage_encryption(args)
+    elif args.wallet_cmd == "delete":
+        delete_wallet(args)
     else:
         print("Unknown sub-command for wallets")
         if hasattr(args, 'parser'):
@@ -212,3 +221,7 @@ def register(subparsers):
     encryption_parser = wallet_subparsers.add_parser("encryption", help="Manage encryption settings.")
     encryption_parser.add_argument("--generate-key", required=False, action="store_true", help="Generate a new encryption key.")
     encryption_parser.add_argument("--rotate-key", required=False, action="store_true", help="Rotate the encryption key.")
+
+    # delete wallet
+    delete_parser = wallet_subparsers.add_parser("delete", help="Delete a wallet (stub).")
+    delete_parser.add_argument("--id", type=int, required=True, help="Wallet ID.")
