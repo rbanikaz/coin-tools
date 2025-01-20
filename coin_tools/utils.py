@@ -1,6 +1,7 @@
 import random
 import time
 
+
 def randomize_by_percentage(amount, randomize):
     """
     Randomize a value by a given percentage.
@@ -12,6 +13,7 @@ def randomize_by_percentage(amount, randomize):
     min_value = amount * (1 - randomize)
     max_value = amount * (1 + randomize)
     return random.uniform(min_value, max_value)
+
 
 def random_delay_from_range(range_string):
     """
@@ -33,3 +35,18 @@ def random_delay_from_range(range_string):
         time.sleep(delay)
     except ValueError as e:
         print(f"Error parsing range string: {e}")
+
+
+def parse_ranges(input_string):
+    """
+    Parse a string with single IDs and ranges, and return a list of integers.
+    Example inputs: "2,3-10,14", "3-7", "1-2,3,4-7"
+    """
+    ids = []
+    for part in input_string.split(","):
+        if "-" in part:
+            start, end = map(int, part.split("-"))
+            ids.extend(range(start, end + 1))
+        else:
+            ids.append(int(part))
+    return ids

@@ -12,8 +12,8 @@ from spl.token.instructions import TransferParams as SplTransferParams
 from spl.token.instructions import get_associated_token_address
 from spl.token.instructions import transfer as spl_transfer
 
-from coin_tools.utils import randomize_by_percentage, random_delay_from_range
-from coin_tools.db import get_wallet_by_id, update_wallet_access_time
+from coin_tools.utils import randomize_by_percentage, random_delay_from_range, parse_ranges
+from coin_tools.db import get_wallet_by_id, get_wallets_by_ids, update_wallet_access_time
 from coin_tools.encryption import decrypt_data
 from coin_tools.solana.tokens import (
     fetch_or_create_token_account,
@@ -167,7 +167,7 @@ def transfer_token(args: argparse.Namespace):
 
 def bulk_transfer_sol(args: argparse.Namespace):
     from_wallet = get_wallet_by_id(args.from_id)
-    to_wallets = [get_wallet_by_id(id) for id in args.to_ids.split(",")]
+    to_wallets = get_wallets_by_ids(parse_ranges(args.to_ids))
     
     if not from_wallet or not all(to_wallets):
         print("Error: Wallet(s) not found.")
@@ -175,16 +175,18 @@ def bulk_transfer_sol(args: argparse.Namespace):
     
     original_amount = args.amount
 
-    for to_id in args.to_ids.split(","):
+    for wallet in to_wallets:
         amount = original_amount
 
         if args.randomize:
             amount = randomize_by_percentage(amount, args.randomize)
         
-        args.to_id = to_id
+        args.to_id = wallet["id"]
         args.amount = amount
         
+        print(f"Wallet {wallet['id']} {wallet['public_key']} transferring {amount} SOL.")
         transfer_sol(args)
+        print()
 
         if args.random_delays:
             random_delay_from_range(args.random_delays)
@@ -192,7 +194,7 @@ def bulk_transfer_sol(args: argparse.Namespace):
 
 def bulk_transfer_token(args: argparse.Namespace):
     from_wallet = get_wallet_by_id(args.from_id)
-    to_wallets = [get_wallet_by_id(id) for id in args.to_ids.split(",")]
+    to_wallets = get_wallets_by_ids(parse_ranges(args.to_ids))
     
     if not from_wallet or not all(to_wallets):
         print("Error: Wallet(s) not found.")
@@ -200,16 +202,18 @@ def bulk_transfer_token(args: argparse.Namespace):
     
     original_amount = args.amount
 
-    for to_id in args.to_ids.split(","):
+    for wallet in to_wallets:
         amount = original_amount
 
         if args.randomize:
             amount = randomize_by_percentage(amount, args.randomize)
         
-        args.to_id = to_id
+        args.to_id = wallet["id"]
         args.amount = amount
-        
+
+        print(f"Wallet {wallet['id']} {wallet['public_key']} transferring {amount} tokens.")
         transfer_token(args)
+        print()
 
         if args.random_delays:
             random_delay_from_range(args.random_delays)

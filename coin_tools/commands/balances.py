@@ -3,9 +3,11 @@ import argparse
 from solana.constants import LAMPORTS_PER_SOL
 from solders.pubkey import Pubkey as PublicKey #type: ignore
 
+from coin_tools.utils import parse_ranges
 from coin_tools.db import (
     get_all_wallets,
     get_wallet_by_id,
+    get_wallets_by_ids,
     get_wallets_by_name_prefix,
 )
 
@@ -77,7 +79,15 @@ def get_token_balance(args):
 def get_total_balance(args):
     client = get_solana_client()
 
-    wallets = get_all_wallets() if args.prefix is None else get_wallets_by_name_prefix(args.prefix)
+    if not args.prefix and not args.ids:
+        wallets = get_all_wallets()
+    else:
+        wallets = []
+        if args.prefix:
+            wallets += get_wallets_by_name_prefix(args.prefix)
+        
+        if args.ids:
+            wallets += get_wallets_by_ids(parse_ranges(args.ids))
 
     if len(wallets) == 0:
         print("No wallets found.")
@@ -123,6 +133,8 @@ def get_total_balance(args):
     print()
     print("Total Token Balances:")
     for mint_pubkey, balance in total_tokens.items():
+        if args.ca and str(mint_pubkey) != args.ca:
+            continue
         metadata = fetch_token_metadata(client, mint_pubkey)
         token_name = metadata["name"]
         token_ticker = metadata["symbol"]
@@ -180,4 +192,6 @@ def register(subparsers):
     )
     get_total_parser.add_argument("--list", action="store_true", help="Lists the balances of all the wallets while calculating the total balance.")
     get_total_parser.add_argument("--prefix", required=False, help="Find wallets by name (case insensitive prefix).")
+    get_total_parser.add_argument("--ids", required=False, help="Find wallets by ids (comma separated with ranges).")
+    get_total_parser.add_argument("--ca", required=False, help="Token contract/mint address (CA).")
 
