@@ -61,7 +61,7 @@ def sell(
 
     slippage_adjustment = 1 - (slippage / 100)
     min_sol_output = int((amount_in_sol * slippage_adjustment) * LAMPORTS_PER_SOL)
-    print(f"Amount: {amount}, Min Sol Out: {min_sol_output}")
+    print(f"Amount: {amount / token_dec}, Min Sol Out: {min_sol_output / LAMPORTS_PER_SOL}")
 
     MINT = coin_data.mint
     BONDING_CURVE = coin_data.bonding_curve

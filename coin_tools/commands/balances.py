@@ -6,6 +6,7 @@ from solders.pubkey import Pubkey as PublicKey #type: ignore
 from coin_tools.db import (
     get_all_wallets,
     get_wallet_by_id,
+    get_wallets_by_name_prefix,
 )
 
 from coin_tools.solana.tokens import fetch_token_accounts, fetch_token_metadata
@@ -76,14 +77,15 @@ def get_token_balance(args):
 def get_total_balance(args):
     client = get_solana_client()
 
-    wallets = get_all_wallets()
+    wallets = get_all_wallets() if args.prefix is None else get_wallets_by_name_prefix(args.prefix)
+
     if len(wallets) == 0:
         print("No wallets found.")
         return
 
     total_sol = 0
     total_tokens = {}
-
+    
     for wallet in wallets:
         wallet_pubkey = PublicKey.from_string(wallet["public_key"])
 
@@ -115,7 +117,10 @@ def get_total_balance(args):
         if args.list:
             print("\n")
 
+    print("Total Wallets:", len(wallets))
+    print()
     print(f"Total SOL Balance: {total_sol} SOL")
+    print()
     print("Total Token Balances:")
     for mint_pubkey, balance in total_tokens.items():
         metadata = fetch_token_metadata(client, mint_pubkey)
@@ -171,7 +176,8 @@ def register(subparsers):
     # get-total-balance
     get_total_parser = balances_subparsers.add_parser(
         "get-total-balance",
-        help="Get the total balance for all wallets."
+        help="Calculate the total balance for wallets."
     )
-    get_total_parser.add_argument("--list", action="store_true", help="Lists the balances of all the wallets when calculating the total balance.")
+    get_total_parser.add_argument("--list", action="store_true", help="Lists the balances of all the wallets while calculating the total balance.")
+    get_total_parser.add_argument("--prefix", required=False, help="Find wallets by name (case insensitive prefix).")
 

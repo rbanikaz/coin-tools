@@ -14,7 +14,7 @@ It stores wallets locally in sqlite and has scripts for getting balances, moving
 
 ### Donation address:
 ```
-DYwtGzZ3jzRLydZPoEhRbbjREWcsUMHBGTEaoGHS3sYK
+7fhdYnQZvymeeLtqwS5XhmSHXjGu3oVgXVJmSdD5vvhq
 ```
 
 ### Getting Started
@@ -82,9 +82,12 @@ optional arguments:
   --id ID     Wallet ID.
 ```
 
-Simple volume bot
+### EXAMPLE: Simple volume bot
 ```
-while true; do ./coin-tools pump-fun bulk-trade --ids $WALLET_LIST --amount 0.03 --randomize 0.9 --random-delay 10-60 --ca $CA --buy-rate 0.8 --shuffle ; sleep 60; done
+(.venv) ➜  coin-tools git:(main) ✗ while true; do 
+    ./coin-tools pump-fun bulk-trade --ids $WALLET_LIST --amount 0.03 --randomize 0.9 --random-delay 10-60 --ca $CA --buy-rate 0.8 --shuffle 
+    sleep 60
+done
 ```
 
 ### Notes on encryption:
