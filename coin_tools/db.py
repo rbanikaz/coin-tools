@@ -61,6 +61,22 @@ def get_all_wallets():
     # Convert to list of dicts
     return [dict(row) for row in rows]
 
+def get_wallets_by_name_prefix(name: str):
+    """
+    Returns a list of all wallets in DB as dictionaries searching by name (case insensitive prefix).
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM wallets where status <> 'deleted' and lower(name) like ?", (f"{name.lower()}%",))
+    rows = cursor.fetchall()
+    conn.close()
+
+    # Convert to list of dicts
+    return [dict(row) for row in rows]
+
 def get_wallet_by_id(wallet_id: int):
     """
     Returns a single wallet by ID or None if not found.
@@ -122,7 +138,7 @@ def update_private_key(wallet_id: int, private_key_encrypted: bytes):
     )
     conn.commit()
     conn.close()
-    
+
 def update_wallet_status(wallet_id: int, status: str):
     """
     Updates the 'status' for the given wallet ID.

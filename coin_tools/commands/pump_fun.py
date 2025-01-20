@@ -14,6 +14,7 @@ from coin_tools.utils import randomize_by_percentage, random_delay_from_range
 from coin_tools.pump_fun.coin_data import fetch_coin_data
 from coin_tools.solana.tokens import fetch_token_metadata
 from coin_tools.solana.utils import (
+  APPROX_RENT,
   get_solana_client,
   parse_private_key_bytes,
   fetch_sol_balance,
@@ -220,6 +221,7 @@ def bulk_trade(args: argparse.Namespace):
     
     num_buy = 0
     num_sell = 0
+    num_skip = 0
 
     for wallet in trader_wallets:
       amount_in_sol = original_amount_in_sol
@@ -230,6 +232,8 @@ def bulk_trade(args: argparse.Namespace):
       if args.randomize:
           amount_in_sol = randomize_by_percentage(amount_in_sol, args.randomize)
       
+      amount_in_sol = amount_in_sol
+
       args.id = wallet['id']
       args.amount_in_sol = amount_in_sol
       args.amount_in_token = amount_in_sol / token_price
@@ -237,8 +241,8 @@ def bulk_trade(args: argparse.Namespace):
 
       prefer_buy = random.random() < args.buy_rate
 
-      can_buy = sol_balance >= args.amount_in_sol
-      can_sell = token_balance >= args.amount_in_token
+      can_buy = sol_balance >= (args.amount_in_sol + APPROX_RENT)
+      can_sell = token_balance and token_balance >= args.amount_in_token
 
       trade_action = None
 
@@ -251,7 +255,7 @@ def bulk_trade(args: argparse.Namespace):
             print(f"Wallet {wallet['id']} {wallet['public_key']} SOL balance {sol_balance} < {args.amount_in_sol} unable to buy, switching to sell.")
           else:          
             print(f"Wallet {wallet['id']} {wallet['public_key']} SOL balance {sol_balance} < {args.amount_in_sol} and token balance {token_balance} < {args.amount_in_token} unable to buy or sell.")
-            continue
+            trade_action = None
       else:
           if can_sell:
             trade_action = 'sell'
@@ -261,7 +265,7 @@ def bulk_trade(args: argparse.Namespace):
             print(f"Wallet {wallet['id']} {wallet['public_key']} token balance {token_balance} < {args.amount_in_token} unable to sell, switching to buy.")
           else:
             print(f"Wallet {wallet['id']} {wallet['public_key']} token balance {token_balance} < {args.amount_in_token} and SOL balance {sol_balance} < {args.amount_in_sol} unable to buy or sell.")
-            continue
+            trade_action = None
 
       if trade_action == 'buy':
         num_buy += 1
@@ -269,14 +273,16 @@ def bulk_trade(args: argparse.Namespace):
       elif trade_action == 'sell':
         num_sell += 1
         sell(args)
+      else:
+        num_skip += 1
 
       print()
-      if args.random_delays:
+      if args.random_delays and trade_action:
         random_delay_from_range(args.random_delays)
 
       
 
-    print(f"Buy: {num_buy}, Sell: {num_sell}, Total: {num_buy + num_sell}")
+    print(f"Buy: {num_buy}, Sell: {num_sell}, Total: {num_buy + num_sell + num_skip}, Skipped: {num_skip}")
 
 
 def pumpfun_command(args: argparse.Namespace):

@@ -62,7 +62,7 @@ def buy(
 
     slippage_adjustment = 1 + (slippage / 100)
     max_sol_cost = int((amount_in_sol * slippage_adjustment) * LAMPORTS_PER_SOL)
-    print(f"Amount: {amount}, Max Sol Cost: {max_sol_cost}")
+    print(f"Amount: {amount / token_dec}, Max Sol Cost: {max_sol_cost / LAMPORTS_PER_SOL}")
 
 
     MINT = coin_data.mint
@@ -97,7 +97,7 @@ def buy(
         set_compute_unit_limit(unit_limit),
         set_compute_unit_price(unit_price)
     ]
-    
+
     if create_ata_ix:
         instructions.append(create_ata_ix)
 
