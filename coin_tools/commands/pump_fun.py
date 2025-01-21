@@ -1,7 +1,7 @@
 import argparse
 import traceback
 import random
-from solana.constants import LAMPORTS_PER_SOL
+from decimal import Decimal
 from solders.pubkey import Pubkey as PublicKey  # type: ignore
 
 from coin_tools.encryption import decrypt_data
@@ -12,7 +12,6 @@ from coin_tools.pump_fun.sell import sell as pumpfun_sell
 from coin_tools.utils import randomize_by_percentage, random_delay_from_range, parse_ranges
 
 from coin_tools.pump_fun.coin_data import fetch_coin_data
-from coin_tools.solana.tokens import fetch_token_metadata
 from coin_tools.solana.utils import (
   APPROX_RENT,
   get_solana_client,
@@ -25,24 +24,7 @@ from coin_tools.solana.utils import (
 def get_data(args: argparse.Namespace):
     client = get_solana_client()
     mint_pubkey = PublicKey.from_string(args.ca)
-    token_metadata = fetch_token_metadata(client, mint_pubkey)
-
-    try:
-      coin_data = fetch_coin_data(client, mint_pubkey)
-    except Exception as e:
-        print(f"Error fetching coin data: {e}")
-        return
-
-    token_decimals = token_metadata["decimals"]
-    
-    virtual_sol_reserves = coin_data.virtual_sol_reserves / LAMPORTS_PER_SOL
-    virtual_token_reserves = coin_data.virtual_token_reserves / 10**token_decimals
-    total_supply = coin_data.token_total_supply / 10**token_decimals
-
-    if virtual_token_reserves > 0:
-      token_price = virtual_sol_reserves / virtual_token_reserves
-    else:
-      token_price = None
+    coin_data = fetch_coin_data(client, mint_pubkey)
 
     if coin_data.complete:
         print("Warning: This token has bonded and no longer tradeable on pump.fun")
@@ -50,18 +32,19 @@ def get_data(args: argparse.Namespace):
         
     print("Token Info:")
     print(f"   Mint: {mint_pubkey}")
-    print(f"   Name: {token_metadata['name']} ({token_metadata['symbol']})")
-    if token_price is None:
+    print(f"   Name: {coin_data.metadata['name']} ({coin_data.metadata['symbol']})")
+    if coin_data.price is None:
         print("   Price: NaN")
         print("   Market Cap: Unknown")
     else:
-        print(f"   Price: {token_price:.20f} SOL")
-        print(f"   Market Cap: {(token_price * total_supply):.4f} SOL")
-    print(f"   Decimals: {token_decimals}")
-    print(f"   Virtual Token Reserves: {virtual_token_reserves}")
-    print(f"   Virtual Sol Reserves: {virtual_sol_reserves}")
+        print(f"   Price: {coin_data.price:.20f} SOL")
+        print(f"   Market Cap: {(coin_data.market_cap):.4f} SOL")
+    print(f"   Decimals: {coin_data.metadata['decimals']}")
+    print(f"   Virtual Token Reserves: {coin_data.virtual_token_reserves}")
+    print(f"   Virtual Sol Reserves: {coin_data.virtual_sol_reserves}")
     print(f"   Token Total Supply: {coin_data.token_total_supply}")
     print(f"   Complete: {coin_data.complete}")
+
 
 def buy(args: argparse.Namespace):
     wallet = get_wallet_by_id(args.id)
@@ -197,30 +180,16 @@ def bulk_trade(args: argparse.Namespace):
                
     client = get_solana_client()
     mint_pubkey = PublicKey.from_string(args.ca)
-    token_metadata = fetch_token_metadata(client, mint_pubkey)
-
-    try:
-      coin_data = fetch_coin_data(client, mint_pubkey)
-    except Exception as e:
-        print(f"Error fetching coin data: {e}")
-        return
-
-    token_decimals = token_metadata["decimals"]
+    coin_data = fetch_coin_data(client, mint_pubkey)
     
-    virtual_sol_reserves = coin_data.virtual_sol_reserves / LAMPORTS_PER_SOL
-    virtual_token_reserves = coin_data.virtual_token_reserves / 10**token_decimals
-
-    if virtual_token_reserves > 0:
-      token_price = virtual_sol_reserves / virtual_token_reserves
-    else:
-      token_price = None
-
-    if coin_data.complete or token_price is None:
+    if coin_data is None or coin_data.complete:
         print("Error: This token has bonded and no longer tradeable on pump.fun")
         return
     
+    token_price = coin_data.price
+
     original_amount_in_sol = args.amount_in_sol
-    
+
     num_buy = 0
     num_sell = 0
     num_skip = 0
@@ -234,11 +203,9 @@ def bulk_trade(args: argparse.Namespace):
       if args.randomize:
           amount_in_sol = randomize_by_percentage(amount_in_sol, args.randomize)
       
-      amount_in_sol = amount_in_sol
-
       args.id = wallet['id']
       args.amount_in_sol = amount_in_sol
-      args.amount_in_token = amount_in_sol / token_price
+      args.amount_in_token = float(Decimal(amount_in_sol) / token_price)
       print(f"Trading {amount_in_sol} SOL [{args.amount_in_token} tokens] for wallet ID {wallet['id']} {wallet['public_key']}...")
 
       prefer_buy = random.random() < args.buy_rate

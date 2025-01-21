@@ -1,10 +1,14 @@
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Optional
 from construct import Flag, Int64ul, Padding, Struct
 from solana.rpc.api import Client
+from solana.constants import LAMPORTS_PER_SOL
 from solders.pubkey import Pubkey as PublicKey  # type: ignore
 from spl.token.instructions import get_associated_token_address
 from coin_tools.pump_fun.constants import PUMP_FUN_PROGRAM
+
+from coin_tools.solana.tokens import fetch_token_metadata
 
 @dataclass
 class CoinData:
@@ -15,6 +19,10 @@ class CoinData:
     virtual_sol_reserves: int
     token_total_supply: int
     complete: bool
+    price: Optional[Decimal] = None
+    market_cap: Optional[Decimal] = None
+    metadata: Optional[dict] = None
+
 
 def fetch_virtual_reserves(client: Client, bonding_curve: PublicKey):
     bonding_curve_struct = Struct(
@@ -49,20 +57,42 @@ def derive_bonding_curve_accounts(mint_pubkey: PublicKey):
 def fetch_coin_data(client: Client, mint_pubkey: PublicKey) -> Optional[CoinData]:
     bonding_curve, associated_bonding_curve = derive_bonding_curve_accounts(mint_pubkey)
     if bonding_curve is None or associated_bonding_curve is None:
-        raise Exception("Error deriving bonding curve accounts")
+        return None
 
     virtual_reserves = fetch_virtual_reserves(client, bonding_curve)
     if virtual_reserves is None:
-        raise Exception("Error fetching virtual reserves")
+        return None
+
+    token_metadata = fetch_token_metadata(client, mint_pubkey)
+
+    token_decimals = token_metadata["decimals"]
+    
+    virtual_token_reserves = int(virtual_reserves.virtualTokenReserves)
+    virtual_sol_reserves = int(virtual_reserves.virtualSolReserves)
+    total_token_supply = int(virtual_reserves.tokenTotalSupply)
+    complete = bool(virtual_reserves.complete)
+
+    sol_reserves = virtual_sol_reserves / LAMPORTS_PER_SOL
+    token_reserves = virtual_token_reserves / 10**token_decimals
+    total_supply = Decimal(total_token_supply) / Decimal(10)**token_decimals
+
+    if token_reserves > 0:
+      token_price = Decimal(sol_reserves) / Decimal(token_reserves)
+    else:
+      token_price = None
+
 
     return CoinData(
           mint=mint_pubkey,
           bonding_curve=bonding_curve,
           associated_bonding_curve=associated_bonding_curve,
-          virtual_token_reserves=int(virtual_reserves.virtualTokenReserves),
-          virtual_sol_reserves=int(virtual_reserves.virtualSolReserves),
-          token_total_supply=int(virtual_reserves.tokenTotalSupply),
-          complete=bool(virtual_reserves.complete),
+          virtual_token_reserves=virtual_token_reserves,
+          virtual_sol_reserves=virtual_sol_reserves,
+          token_total_supply=total_token_supply,
+          complete=complete,
+          price=token_price,
+          market_cap=token_price * total_supply if token_price else None,
+          metadata=token_metadata
       )
   
 

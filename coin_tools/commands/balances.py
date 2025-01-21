@@ -1,8 +1,10 @@
 import argparse
-
+from decimal import Decimal
+from httpx import get
 from solana.constants import LAMPORTS_PER_SOL
 from solders.pubkey import Pubkey as PublicKey #type: ignore
 
+from coin_tools.pump_fun.coin_data import fetch_coin_data
 from coin_tools.utils import parse_ranges
 from coin_tools.db import (
     get_all_wallets,
@@ -37,6 +39,20 @@ def get_sol_balance(args: argparse.Namespace):
     print(f"   SOL Balance: {sol_balance} SOL")
 
 
+def print_token_balance(token_metadata, balance, coin_data = None):
+    token_name = token_metadata["name"]
+    token_ticker = token_metadata["symbol"]
+    print(f"   {token_name} ({token_ticker})   CA: {token_metadata['ca']}")
+    print(f"   {'Balance:':<10} {balance:<20}", end="")
+    if coin_data and coin_data.price:
+        print(f" {'Market Cap:':<10} {coin_data.market_cap:.6f} SOL")
+        value = balance * coin_data.price
+        print(f"   {'Value:':<10} {value:.6f} SOL         {'Price:':<10}  {coin_data.price:.20f} SOL\n")
+    else:
+        print()
+        print()
+
+
 def get_token_balance(args):
     wallet = get_wallet_by_id(args.id)
     if not wallet:
@@ -59,22 +75,31 @@ def get_token_balance(args):
             return
 
         print(f"Wallet ID={args.id} ({wallet['name']}), Public Key={wallet['public_key']}):\n")
-        for entry in token_accounts:
-            print(f"   {entry['token_name']} ({entry['token_ticker']}) CA: {entry['mint_pubkey']}")
-            print(f"   Balance: {entry['real_balance']}\n")
+        for token in token_accounts:
+            coin_data = fetch_coin_data(client, token["mint_pubkey"]) if args.price else None
+            metadata = fetch_token_metadata(client, token["mint_pubkey"])
+            print_token_balance(metadata, token["real_balance"], coin_data)
     else:
         token_balance = fetch_token_balance(client, wallet_pubkey, token_mint_pubkey)
         if token_balance is None:
             print(f"No token account found for {args.ca}")
             return
         
+        coin_data = fetch_coin_data(client, token_mint_pubkey) if args.price else None
         metadata = fetch_token_metadata(client, token_mint_pubkey)
-        token_name = metadata["name"]
-        token_ticker = metadata["symbol"]
-        print(f"Wallet ID={args.id} ({wallet['name']}), Public Key={wallet['public_key']}:\n")
-        print(f"   {token_name} ({token_ticker}) CA: {token_mint_pubkey}")
-        print(f"   Balance: {token_balance}\n")
 
+        print(f"Wallet ID={args.id} ({wallet['name']}), Public Key={wallet['public_key']}:\n")
+        print_token_balance(metadata, token_balance, coin_data)
+
+coin_data_cache = {}
+
+def get_coin_data(client, mint_pubkey):
+    if mint_pubkey in coin_data_cache:
+        return coin_data_cache[mint_pubkey]
+
+    coin_data = fetch_coin_data(client, mint_pubkey)
+    coin_data_cache[mint_pubkey] = coin_data
+    return coin_data
 
 def get_total_balance(args):
     client = get_solana_client()
@@ -93,31 +118,28 @@ def get_total_balance(args):
         print("No wallets found.")
         return
 
-    total_sol = 0
+    total_sol = Decimal(0)
     total_tokens = {}
-    
+
     for wallet in wallets:
         wallet_pubkey = PublicKey.from_string(wallet["public_key"])
 
-        # 1) Fetch SOL balance
-        resp = client.get_balance(wallet_pubkey)
-        lamports = resp.value
-        sol_balance = lamports / LAMPORTS_PER_SOL
+        sol_balance = fetch_sol_balance(client, wallet_pubkey)
         total_sol += sol_balance
 
         if args.list:
             print(f"Wallet ID={wallet['id']} ({wallet['name']}), Public Key={wallet['public_key']}")
             print(f"   SOL Balance: {sol_balance} SOL")
             
-        # 2) Fetch token accounts
         token_accounts = fetch_token_accounts(client, wallet_pubkey)
         for entry in token_accounts:
             mint_pubkey = entry["mint_pubkey"]
             real_balance = entry["real_balance"]
 
             if args.list:
-                print(f"   {entry['token_name']} ({entry['token_ticker']}) CA: {mint_pubkey}")
-                print(f"   Balance: {real_balance}\n")
+                metadata = fetch_token_metadata(client, mint_pubkey)
+                coin_data = get_coin_data(client, mint_pubkey) if args.price else None
+                print_token_balance(metadata, real_balance, coin_data)
 
             if mint_pubkey not in total_tokens:
                 total_tokens[mint_pubkey] = 0
@@ -127,19 +149,32 @@ def get_total_balance(args):
         if args.list:
             print("\n")
 
+    token_data = {}
+    
+    if args.ca:
+        mint_pubkey = PublicKey.from_string(args.ca)
+        total_tokens = {mint_pubkey: total_tokens[mint_pubkey]}
+    total_token_value = 0
+
+    for mint_pubkey, balance in total_tokens.items():
+        metadata = fetch_token_metadata(client, mint_pubkey)
+        coin_data = get_coin_data(client, mint_pubkey) if args.price else None
+        value = balance * coin_data.price if coin_data and coin_data.price else 0
+        total_token_value += value
+        token_data[mint_pubkey] = {"metadata": metadata, "balance": balance, "coin_data": coin_data}
+
     print("Total Wallets:", len(wallets))
-    print()
-    print(f"Total SOL Balance: {total_sol} SOL")
+    print(f"Total SOL Balance: {total_sol:.6f} SOL")
+    if args.price:
+        print(f"Total Token Value: {total_token_value:.6f} SOL")
+        total_sol_value = total_sol + total_token_value
+        print(f"Total Value:       {total_sol_value:.6f} SOL")
+
     print()
     print("Total Token Balances:")
-    for mint_pubkey, balance in total_tokens.items():
-        if args.ca and str(mint_pubkey) != args.ca:
-            continue
-        metadata = fetch_token_metadata(client, mint_pubkey)
-        token_name = metadata["name"]
-        token_ticker = metadata["symbol"]
-        print(f"   {token_name} ({token_ticker}) CA: {mint_pubkey}")
-        print(f"   Balance: {balance}\n")
+    for mint_pubkey, token_data in token_data.items():
+        print_token_balance(token_data["metadata"], token_data["balance"], token_data["coin_data"])
+        
 
 
 def balances_command(args: argparse.Namespace):
@@ -184,6 +219,7 @@ def register(subparsers):
     )
     get_token_parser.add_argument("--id", type=int, required=True, help="Wallet ID.")
     get_token_parser.add_argument("--ca", required=False, help="Token contract/mint address (CA).")
+    get_token_parser.add_argument("--price", action="store_true", help="Pull pricing information for the token (if available, only for pump_fun currently).")
 
     # get-total-balance
     get_total_parser = balances_subparsers.add_parser(
@@ -194,4 +230,5 @@ def register(subparsers):
     get_total_parser.add_argument("--prefix", required=False, help="Find wallets by name (case insensitive prefix).")
     get_total_parser.add_argument("--ids", required=False, help="Find wallets by ids (comma separated with ranges).")
     get_total_parser.add_argument("--ca", required=False, help="Token contract/mint address (CA).")
+    get_total_parser.add_argument("--price", action="store_true", help="Pull pricing information for the token (if available, only for pump_fun currently).")
 

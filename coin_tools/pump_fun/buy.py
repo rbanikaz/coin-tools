@@ -1,5 +1,5 @@
 import struct
-
+from decimal import Decimal
 from solana.rpc.api import Client
 
 from solders.instruction import AccountMeta  # type: ignore
@@ -21,7 +21,7 @@ from coin_tools.pump_fun.constants import (
 
 from coin_tools.solana.utils import send_transaction
 
-from coin_tools.solana.tokens import fetch_token_metadata, fetch_or_create_token_account
+from coin_tools.solana.tokens import fetch_or_create_token_account
 from solana.constants import SYSTEM_PROGRAM_ID, LAMPORTS_PER_SOL
 from spl.token.constants import TOKEN_PROGRAM_ID
 
@@ -40,26 +40,24 @@ def buy(
 ) -> str:
     coin_data = fetch_coin_data(client, mint_pubkey)
 
-    if not coin_data:
-        raise Exception("Failed to retrieve coin data.")
-
-    if coin_data.complete:
+    if coin_data is None or coin_data.complete:
         raise Exception(
             "Warning: This token has bonded and is only tradable on Raydium."
         )
 
-    token_metadata = fetch_token_metadata(client, mint_pubkey)
+    token_metadata =  coin_data.metadata
     token_dec = 10 ** token_metadata["decimals"]
     buyer_pubkey = buyer_keypair.pubkey()
     buyer_token_account, create_ata_ix = fetch_or_create_token_account(
         client, buyer_pubkey, buyer_pubkey, mint_pubkey, buyer_keypair
     )
     
-    virtual_sol_reserves = coin_data.virtual_sol_reserves / LAMPORTS_PER_SOL
-    virtual_token_reserves = coin_data.virtual_token_reserves / token_dec
-    amount = sol_for_tokens(amount_in_sol, virtual_sol_reserves, virtual_token_reserves)
+    sol_reserves = coin_data.virtual_sol_reserves / LAMPORTS_PER_SOL
+    token_reserves = coin_data.virtual_token_reserves / token_dec
+    
+    amount = sol_for_tokens(amount_in_sol, sol_reserves, token_reserves)
     amount = int(amount * token_dec)
-
+    
     slippage_adjustment = 1 + (slippage / 100)
     max_sol_cost = int((amount_in_sol * slippage_adjustment) * LAMPORTS_PER_SOL)
     print(f"Amount: {amount / token_dec}, Max Sol Cost: {max_sol_cost / LAMPORTS_PER_SOL}")

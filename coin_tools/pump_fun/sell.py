@@ -39,15 +39,12 @@ def sell(
 ) -> str:
     coin_data = fetch_coin_data(client, mint_pubkey)
 
-    if not coin_data:
-        raise Exception("Failed to retrieve coin data.")
-
-    if coin_data.complete:
+    if coin_data is None or coin_data.complete:
         raise Exception(
             "Warning: This token has bonded and is only tradable on Raydium."
         )
 
-    token_metadata = fetch_token_metadata(client, mint_pubkey)
+    token_metadata = coin_data.metadata
     token_dec = 10 ** token_metadata["decimals"]
     seller_pubkey = seller_keypair.pubkey()
     seller_token_account, create_ata_ix = fetch_or_create_token_account(
