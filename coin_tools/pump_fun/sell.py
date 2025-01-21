@@ -3,6 +3,7 @@ import struct
 from solana.rpc.api import Client
 
 from solders.instruction import AccountMeta  # type: ignore
+from solders.system_program import TransferParams, transfer # type: ignore
 
 from solders.keypair import Keypair  # type: ignore
 from solders.pubkey import Pubkey as PublicKey  # type: ignore
@@ -16,11 +17,12 @@ from coin_tools.pump_fun.constants import (
     FEE_RECIPIENT,
     GLOBAL,
     PUMP_FUN_PROGRAM,
+    JITO_TIP_ADDRESS
 )
 
 from coin_tools.solana.utils import send_transaction
 
-from coin_tools.solana.tokens import fetch_token_metadata, fetch_or_create_token_account
+from coin_tools.solana.tokens import fetch_or_create_token_account
 from solana.constants import SYSTEM_PROGRAM_ID, LAMPORTS_PER_SOL
 from spl.token.constants import TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
 
@@ -36,6 +38,7 @@ def sell(
     unit_limit: int = 100_000,
     unit_price: int = 1_000_000,
     confirm: bool = False,
+    jito_tip: int = 30_000
 ) -> str:
     coin_data = fetch_coin_data(client, mint_pubkey)
 
@@ -90,12 +93,12 @@ def sell(
 
     instructions = [
         set_compute_unit_limit(unit_limit),
-        set_compute_unit_price(unit_price)
+        set_compute_unit_price(unit_price + jito_tip) # add a bit for JITO, this is not the right way to do it
     ]
 
     if create_ata_ix:
         instructions.append(create_ata_ix)
-    
+
     instructions.append(swap_ix)
     
     print("Sending transaction...")

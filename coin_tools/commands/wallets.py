@@ -17,18 +17,34 @@ from coin_tools.db import (
 from coin_tools.encryption import decrypt_data, encrypt_data
 from coin_tools.solana.utils import parse_private_key_bytes
 
-
-def create_wallet(args: argparse.Namespace):
-    name = args.name
+def __create_wallet(name: str):
     keypair = Keypair()
     public_key_str = str(keypair.pubkey())
     secret_bytes = keypair.secret()
     encrypted_key = encrypt_data(secret_bytes)
     id = insert_wallet(name, public_key_str, encrypted_key)
+    return id, public_key_str
+
+def create_wallet(args: argparse.Namespace):
+    name = args.name
+    id, public_key_str = __create_wallet(name)
 
     print(f"Wallet ID {id} created!")
     print(f"Public Key: {public_key_str}")
 
+def bulk_create_wallets(args: argparse.Namespace):
+    count = args.count
+    name_prefix = args.name_prefix
+
+    ids_created = []
+
+    for i in range(count):
+        name = f"{name_prefix}{i}"
+        id = __create_wallet(name)
+        ids_created.append(id)
+    
+    print(f"{count} wallets created with prefix '{name_prefix}'.")
+    print(f"IDs: {', '.join(str(i) for i in ids_created)}")
 
 def list_wallets(args: argparse.Namespace):
     wallets = get_all_wallets()
@@ -155,6 +171,8 @@ def delete_wallet(args: argparse.Namespace):
 def wallets_command(args: argparse.Namespace):
     if args.wallet_cmd == "create":
         create_wallet(args)
+    elif args.wallet_cmd == "bulk-create":
+        bulk_create_wallets(args)
     elif args.wallet_cmd == "list":
         list_wallets(args)
     elif args.wallet_cmd == "get":
@@ -188,6 +206,11 @@ def register(subparsers):
     create_parser = wallet_subparsers.add_parser("create", help="Create a new Solana wallet.")
     create_parser.add_argument("--name", required=True, help="Name of the wallet")
 
+    # bulk-create
+    bulk_create_parser = wallet_subparsers.add_parser("bulk-create", help="Bulk create wallets.")
+    bulk_create_parser.add_argument("--count", type=int, required=True, help="Number of wallets to create.")
+    bulk_create_parser.add_argument("--name-prefix", required=True, help="Prefix for wallet names.")
+
     # list
     wallet_subparsers.add_parser("list", help="List all wallets.") 
 
@@ -206,15 +229,15 @@ def register(subparsers):
     rename_parser.add_argument("--id", type=int, required=True, help="Wallet ID")
     rename_parser.add_argument("--name", required=True, help="New name for the wallet")
 
-    # ticker
-    ticker_parser = wallet_subparsers.add_parser("metadata", help="Manage metadata for known tokens.")
-    ticker_parser.add_argument("--list", required=False, action="store_true", help="List all known tokens.")
-    ticker_parser.add_argument("--update", required=False, action="store_true", help="Update (or add if not exists) to known tokens.")
-    ticker_parser.add_argument("--ca", required=False, help="Token contract/mint address (CA).")
-    ticker_parser.add_argument("--name", required=False, help="Coin name.")
-    ticker_parser.add_argument("--symbol", required=False, help="Coin ticker symbol.")
-    ticker_parser.add_argument("--uri", required=False, help="Coin URI.")
-    ticker_parser.add_argument("--decimals", required=False, help="Coin decimals.")
+    # metadata
+    metadata_parser = wallet_subparsers.add_parser("metadata", help="Manage metadata for known tokens.")
+    metadata_parser.add_argument("--list", required=False, action="store_true", help="List all known tokens.")
+    metadata_parser.add_argument("--update", required=False, action="store_true", help="Update (or add if not exists) to known tokens.")
+    metadata_parser.add_argument("--ca", required=False, help="Token contract/mint address (CA).")
+    metadata_parser.add_argument("--name", required=False, help="Coin name.")
+    metadata_parser.add_argument("--symbol", required=False, help="Coin ticker symbol.")
+    metadata_parser.add_argument("--uri", required=False, help="Coin URI.")
+    metadata_parser.add_argument("--decimals", required=False, help="Coin decimals.")
 
     # encryption
     encryption_parser = wallet_subparsers.add_parser("encryption", help="Manage encryption settings.")

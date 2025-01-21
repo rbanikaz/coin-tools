@@ -1,5 +1,6 @@
 import argparse
 from decimal import Decimal
+import token
 from httpx import get
 from solana.constants import LAMPORTS_PER_SOL
 from solders.pubkey import Pubkey as PublicKey #type: ignore
@@ -118,6 +119,8 @@ def get_total_balance(args):
         print("No wallets found.")
         return
 
+    token_pubkey = PublicKey.from_string(args.ca) if args.ca else None
+        
     total_sol = Decimal(0)
     total_tokens = {}
 
@@ -136,6 +139,9 @@ def get_total_balance(args):
             mint_pubkey = entry["mint_pubkey"]
             real_balance = entry["real_balance"]
 
+            if token_pubkey and token_pubkey != mint_pubkey:
+                continue
+
             if args.list:
                 metadata = fetch_token_metadata(client, mint_pubkey)
                 coin_data = get_coin_data(client, mint_pubkey) if args.price else None
@@ -151,9 +157,6 @@ def get_total_balance(args):
 
     token_data = {}
     
-    if args.ca:
-        mint_pubkey = PublicKey.from_string(args.ca)
-        total_tokens = {mint_pubkey: total_tokens[mint_pubkey]}
     total_token_value = 0
 
     for mint_pubkey, balance in total_tokens.items():

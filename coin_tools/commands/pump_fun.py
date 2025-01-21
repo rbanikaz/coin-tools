@@ -69,7 +69,8 @@ def buy(args: argparse.Namespace):
                                   args.slippage, 
                                   args.unit_limit, 
                                   args.unit_price, 
-                                  args.confirm)
+                                  args.confirm,
+                                  args.jito_tip)
       print(f"Transaction Sent: {args.amount_in_sol} SOL to buy {args.ca}. Signature: {txn_signature}")
       update_wallet_access_time(args.id)
     except Exception as e:
@@ -103,7 +104,8 @@ def sell(args: argparse.Namespace):
                                    args.slippage, 
                                    args.unit_limit, 
                                    args.unit_price, 
-                                   args.confirm)
+                                   args.confirm,
+                                   args.jito_tip)
       print(f"Transaction Sent: {args.amount_in_token} of {args.ca} sold. Signature: {txn_signature}")
       update_wallet_access_time(args.id)
     except Exception as e:
@@ -295,6 +297,8 @@ def register(subparsers):
     buy_subparser.add_argument("--unit-limit", type=int, default=100_000, help="Unit limit")
     buy_subparser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
     buy_subparser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
+    buy_subparser.add_argument("--jito-tip", type=float, default = 30_000, help="JITO MEV Tip.")
+
 
     # bulk buy
     bulk_buy_subparser = pumpfun_subparsers.add_parser("bulk-buy", help="Bulk buy coin from pump.fun")
@@ -309,6 +313,7 @@ def register(subparsers):
     bulk_buy_subparser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
     bulk_buy_subparser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
     bulk_buy_subparser.add_argument("--shuffle", action="store_true", help="Shuffle wallets before processing.")
+    bulk_buy_subparser.add_argument("--jito-tip", type=float, default = 30_000, help="JITO MEV Tip.")
     
     # sell
     sell_subparser = pumpfun_subparsers.add_parser("sell", help="Sell coin on pump.fun")
@@ -319,6 +324,7 @@ def register(subparsers):
     sell_subparser.add_argument("--unit-limit", type=int, default=100_000, help="Unit limit")
     sell_subparser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
     sell_subparser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
+    sell_subparser.add_argument("--jito-tip", type=float, default = 30_000, help="JITO MEV Tip.")
 
     # bulk sell
     bulk_sell_subparser = pumpfun_subparsers.add_parser("bulk-sell", help="Bulk sell coin on pump.fun")
@@ -333,6 +339,7 @@ def register(subparsers):
     bulk_sell_subparser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
     bulk_sell_subparser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
     bulk_sell_subparser.add_argument("--shuffle", action="store_true", help="Shuffle wallets before processing.")
+    bulk_sell_subparser.add_argument("--jito-tip", type=float, default = 30_000, help="JITO MEV Tip.")
 
     # bulk trade
     bulk_trade_subparser = pumpfun_subparsers.add_parser("bulk-trade", help="Bulk trade on pump.fun.  Attempt to buy and sell within a distribution.")
@@ -349,4 +356,5 @@ def register(subparsers):
     bulk_trade_subparser.add_argument("--unit-price", type=int, default=1_000_000, help="Unit price")
     bulk_trade_subparser.add_argument("--confirm", action="store_true", help="Confirm Transactions.")
     bulk_trade_subparser.add_argument("--shuffle", action="store_true", help="Shuffle wallets before processing.")
+    bulk_trade_subparser.add_argument("--jito-tip", type=float, default = 30_000, help="JITO MEV Tip.")
 

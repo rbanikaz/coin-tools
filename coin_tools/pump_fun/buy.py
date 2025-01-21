@@ -3,6 +3,7 @@ from decimal import Decimal
 from solana.rpc.api import Client
 
 from solders.instruction import AccountMeta  # type: ignore
+from solders.system_program import TransferParams, transfer
 
 from solders.keypair import Keypair  # type: ignore
 from solders.pubkey import Pubkey as PublicKey  # type: ignore
@@ -15,6 +16,7 @@ from coin_tools.pump_fun.constants import (
     EVENT_AUTHORITY,
     FEE_RECIPIENT,
     GLOBAL,
+    JITO_TIP_ADDRESS,
     PUMP_FUN_PROGRAM,
     RENT,
 )
@@ -37,6 +39,7 @@ def buy(
     unit_limit: int = 100_000,
     unit_price: int = 1_000_000,
     confirm: bool = False,
+    jito_tip: int = 30_000
 ) -> str:
     coin_data = fetch_coin_data(client, mint_pubkey)
 
@@ -93,7 +96,7 @@ def buy(
 
     instructions = [
         set_compute_unit_limit(unit_limit),
-        set_compute_unit_price(unit_price)
+        set_compute_unit_price(unit_price + jito_tip) # add a bit for JITO, this is not the right way to do it
     ]
 
     if create_ata_ix:
