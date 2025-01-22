@@ -1,8 +1,6 @@
 import argparse
 from decimal import Decimal
-import token
-from httpx import get
-from solana.constants import LAMPORTS_PER_SOL
+
 from solders.pubkey import Pubkey as PublicKey #type: ignore
 
 from coin_tools.pump_fun.coin_data import fetch_coin_data

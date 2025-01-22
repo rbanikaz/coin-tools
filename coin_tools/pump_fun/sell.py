@@ -3,7 +3,6 @@ import struct
 from solana.rpc.api import Client
 
 from solders.instruction import AccountMeta  # type: ignore
-from solders.system_program import TransferParams, transfer # type: ignore
 
 from solders.keypair import Keypair  # type: ignore
 from solders.pubkey import Pubkey as PublicKey  # type: ignore
@@ -16,8 +15,7 @@ from coin_tools.pump_fun.constants import (
     EVENT_AUTHORITY,
     FEE_RECIPIENT,
     GLOBAL,
-    PUMP_FUN_PROGRAM,
-    JITO_TIP_ADDRESS
+    PUMP_FUN_PROGRAM
 )
 
 from coin_tools.solana.utils import send_transaction

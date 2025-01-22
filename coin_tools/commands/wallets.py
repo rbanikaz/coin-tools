@@ -34,17 +34,17 @@ def create_wallet(args: argparse.Namespace):
 
 def bulk_create_wallets(args: argparse.Namespace):
     count = args.count
-    name_prefix = args.name_prefix
+    name_prefix = args.prefix
 
     ids_created = []
 
     for i in range(count):
         name = f"{name_prefix}{i}"
-        id = __create_wallet(name)
+        id, public_key = __create_wallet(name)
         ids_created.append(id)
     
     print(f"{count} wallets created with prefix '{name_prefix}'.")
-    print(f"IDs: {', '.join(str(i) for i in ids_created)}")
+    print(f"Created IDs: {ids_created[0]}-{ids_created[-1]}")
 
 def list_wallets(args: argparse.Namespace):
     wallets = get_all_wallets()
@@ -209,7 +209,7 @@ def register(subparsers):
     # bulk-create
     bulk_create_parser = wallet_subparsers.add_parser("bulk-create", help="Bulk create wallets.")
     bulk_create_parser.add_argument("--count", type=int, required=True, help="Number of wallets to create.")
-    bulk_create_parser.add_argument("--name-prefix", required=True, help="Prefix for wallet names.")
+    bulk_create_parser.add_argument("--prefix", required=True, help="Prefix for wallet names.")
 
     # list
     wallet_subparsers.add_parser("list", help="List all wallets.") 
