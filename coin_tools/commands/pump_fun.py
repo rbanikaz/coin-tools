@@ -213,17 +213,23 @@ def bulk_trade(args: argparse.Namespace):
     else:
       token_price = None
 
+    ATH = args.ath_price
+
     if coin_data.complete or token_price is None:
         print("Error: This token has bonded and no longer tradeable on pump.fun")
         return
     
     original_amount_in_sol = args.amount_in_sol
-    
+    num_wallets = len(trader_wallets)
+    num_buy_transactions = random.randint(2, num_wallets)  # At least 2 buys
+    num_sell_transactions = 1  # Always 1 sell
+    transaction_types = ["buy"] * num_buy_transactions + ["sell"] * num_sell_transactions
+    random.shuffle(transaction_types)
     num_buy = 0
     num_sell = 0
     num_skip = 0
 
-    for wallet in trader_wallets:
+    for wallet, trade_action in zip(trader_wallets, transaction_types):
       amount_in_sol = original_amount_in_sol
       wallet_pubkey = PublicKey.from_string(wallet['public_key'])
       sol_balance = fetch_sol_balance(client, wallet_pubkey)
@@ -231,56 +237,47 @@ def bulk_trade(args: argparse.Namespace):
 
       if args.randomize:
           amount_in_sol = randomize_by_percentage(amount_in_sol, args.randomize)
-      
-      amount_in_sol = amount_in_sol
 
       args.id = wallet['id']
       args.amount_in_sol = amount_in_sol
       args.amount_in_token = amount_in_sol / token_price
       print(f"Trading {amount_in_sol} SOL [{args.amount_in_token} tokens] for wallet ID {wallet['id']} {wallet['public_key']}...")
 
-      prefer_buy = random.random() < args.buy_rate
-
       can_buy = sol_balance >= (args.amount_in_sol + APPROX_RENT)
       can_sell = token_balance and token_balance >= args.amount_in_token
 
-      trade_action = None
-
-      if prefer_buy:
+      if trade_action == "buy":
           if can_buy:
-            trade_action = 'buy'
             print(f"Wallet {wallet['id']} {wallet['public_key']} SOL balance {sol_balance} >= {args.amount_in_sol} buying.")
-          elif can_sell:
-            trade_action = 'sell'
-            print(f"Wallet {wallet['id']} {wallet['public_key']} SOL balance {sol_balance} < {args.amount_in_sol} unable to buy, switching to sell.")
-          else:          
-            print(f"Wallet {wallet['id']} {wallet['public_key']} SOL balance {sol_balance} < {args.amount_in_sol} and token balance {token_balance} < {args.amount_in_token} unable to buy or sell.")
-            trade_action = None
-      else:
-          if can_sell:
-            trade_action = 'sell'
-            print(f"Wallet {wallet['id']} {wallet['public_key']} token balance {token_balance} >= {args.amount_in_token} selling.")
-          elif can_buy:
-            trade_action = 'buy'
-            print(f"Wallet {wallet['id']} {wallet['public_key']} token balance {token_balance} < {args.amount_in_token} unable to sell, switching to buy.")
+            num_buy += 1
+            buy(args)
+            virtual_sol_reserves += amount_in_sol
+            virtual_token_reserves -= args.amount_in_token
+            token_price = virtual_sol_reserves / virtual_token_reserves
           else:
-            print(f"Wallet {wallet['id']} {wallet['public_key']} token balance {token_balance} < {args.amount_in_token} and SOL balance {sol_balance} < {args.amount_in_sol} unable to buy or sell.")
-            trade_action = None
+            print(f"Wallet {wallet['id']} {wallet['public_key']} SOL balance {sol_balance} < {args.amount_in_sol} unable to buy.")
+            num_skip += 1
 
-      if trade_action == 'buy':
-        num_buy += 1
-        buy(args)
-      elif trade_action == 'sell':
-        num_sell += 1
-        sell(args)
-      else:
-        num_skip += 1
+      elif trade_action == "sell":
+          if can_sell:
+            print(f"Wallet {wallet['id']} {wallet['public_key']} token balance {token_balance} >= {args.amount_in_token} selling.")
+            num_sell += 1
+            sell(args)
+            virtual_sol_reserves -= amount_in_sol
+            virtual_token_reserves += args.amount_in_token
+            token_price = virtual_sol_reserves / virtual_token_reserves
+          else:
+            print(f"Wallet {wallet['id']} {wallet['public_key']} token balance {token_balance} < {args.amount_in_token} unable to sell.")
+            num_skip += 1
 
-      print()
-      if args.random_delays and trade_action:
+      print(f"Updated Token Price: {token_price:.6f}, Virtual SOL Reserves: {virtual_sol_reserves:.6f}, Virtual Token Reserves: {virtual_token_reserves:.6f}")
+
+      if args.random_delays:
         random_delay_from_range(args.random_delays)
 
-      
+      if token_price >= ATH:
+        print(f"Price reached ATH during trading ({token_price}). Pausing trades.")
+        break
 
     print(f"Buy: {num_buy}, Sell: {num_sell}, Total: {num_buy + num_sell + num_skip}, Skipped: {num_skip}")
 
